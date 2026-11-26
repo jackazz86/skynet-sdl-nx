@@ -5,3 +5,4 @@ Una riga per prova: data, modifica, risultato.
 | Data | Modifica | Risultato |
 |------|----------|-----------|
 | 2026-11-26 | Fase 0: APK 1.6.1 scaricato, SHA-256 di libSkyNet.so e libSDL3.so coincidono con il piano. 284 simboli indefiniti, 10349 RELATIVE / 282 JUMP_SLOT / 3 GLOB_DAT, EH_FRAME presente, 1874 stringhe SDL_. | OK (analisi). Build .nro non ancora possibile: devkitPro non raggiungibile da questo ambiente. |
+| 2026-11-26 | Fase 1a: APK 1.7.1 (libSkyNet.so sha256 706574a6…, libSDL3.so a8c679e1…). 284 simboli indefiniti (stessi nomi della 1.6.1 + @LIBC). Aggiunti switch/source (so_util da sts2_nx, imports generati: 59 passthrough, il resto stub che loggano), main.c che carica/rilocca/risolve e stampa gli export (SDL_main, JNI_OnLoad). | Compila (devkitA64, libnx) → skynet_nx.nro 328 KB. NON ancora provato su Switch. |

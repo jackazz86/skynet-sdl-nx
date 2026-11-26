@@ -5,3 +5,6 @@
 build/
 gamedata/
 apk_x/
+*.elf
+build/
+*.map
