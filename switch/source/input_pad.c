@@ -134,15 +134,16 @@ static SDL_WindowID window_id(void) {
  * cursor on this build, so the signal is the game's own log: "[Session] enter MAP.nnn" =
  * play. L3+R3 together flips it by hand (g_force). */
 static volatile int g_gameplay;
+static volatile int g_paused_confirmed;   /* the game's [Perf] line said the simulation is stopped */
 static volatile int g_menu_open;     /* the in-game (pause) menu is assumed open: Start toggles it,
                                       * and the game's own "[Perf] ... N ticks a frame" corrects it */
 void input_pad_on_log(const char *msg) {
   if (!msg) return;
   if (!strncmp(msg, "[Session] enter", 15)) {
-    /* a mission was entered; the briefing / start menu that follows the loading is assumed open
-     * (pointer on) until the game's [Perf] line shows the simulation running */
-    g_gameplay = 1; g_menu_open = 1; g_force = 0;
-    debugPrintf("[pad] session started -> gamepad inside the mission, pointer up for the start menu\n");
+    /* a mission was entered: straight into play (there is no start menu: assuming one left the
+     * pointer on screen and the right stick scrolling = changing weapons for the first seconds) */
+    g_gameplay = 1; g_menu_open = 0; g_paused_confirmed = 0; g_force = 0;
+    debugPrintf("[pad] session started -> gamepad mode, pointer off\n");
     return;
   }
   /* the simulation stops while the menu is open: ticks a frame ~ 0 */
@@ -153,6 +154,7 @@ void input_pad_on_log(const char *msg) {
     while (q > msg && ((*q >= '0' && *q <= '9') || *q == '.')) q--;
     float ticks = (float)atof(q + 1);
     int open = ticks < 0.3f;
+    g_paused_confirmed = open;          /* only the game's own word counts as "really paused" */
     if (open != g_menu_open) { g_menu_open = open; debugPrintf("[pad] game says %.1f ticks a frame -> menu %s\n", ticks, open ? "open" : "closed"); }
   }
 }
@@ -278,7 +280,8 @@ static void refresh(void) {
     }
     /* right stick Y: wheel */
     float wy = ry / 32767.0f;
-    if (fabsf(wy) > 0.5f && now - g_last_wheel > armGetSystemTickFreq() / 8) {
+    /* in a mission the wheel changes weapons: only when the game confirmed it is paused */
+    if (fabsf(wy) > 0.5f && now - g_last_wheel > armGetSystemTickFreq() / 8 && (!g_gameplay || g_paused_confirmed)) {
       g_last_wheel = now;
       if (!wid) wid = window_id();
       SDL_zero(e); e.type = SDL_EVENT_MOUSE_WHEEL; e.wheel.timestamp = SDL_GetTicksNS(); e.wheel.windowID = wid;
