@@ -7,19 +7,22 @@ Source of the defaults: the game's own gamepad bindings (`padBindings` in
 |--------|--------|
 | Left stick | Walk / strafe |
 | Right stick | Look |
-| ZR or R | Fire |
+| ZR | Fire |
 | ZL | Throw (grenade etc.) |
 | A | Jump (confirms in menus) |
 | B | Crouch (back in menus) |
 | Y | Use / open |
-| X | Next weapon |
+| X | Next weapon (also R) |
 | L | Previous weapon |
+| R | Next weapon |
 | L3 (click left stick) | Run |
 | R3 (click right stick) | Automap |
 | D-pad | Menu navigation (automap: tilt / turn) |
 | + | Menu / pause |
 | - | Quick save |
 | L3 + R3 together | Flip menu pointer <-> gamepad by hand |
+| L + R + ZL + ZR together | Gyro on/off |
+| Gyro (console or Pro Controller) | Turns and tilts the view (added to the right stick); tune in `/switch/skynet_sdl_nx/gyro.cfg` |
 
 Menus: left stick moves a pointer (arrow), A clicks, right stick up/down scrolls. The
 pointer is on from boot and switches to the gamepad when the game logs `[Session] enter`.

@@ -14,6 +14,7 @@
  *    goes to the game as an ordinary gamepad axis. L3+R3 together cycles the pointer
  *    mode auto -> off -> on (fallback if the detection is wrong). */
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <switch.h>
@@ -59,9 +60,8 @@ static const struct { u64 mask; int button; } MAP[] = {
   { HidNpadButton_Plus, SDL_GAMEPAD_BUTTON_START },
   { HidNpadButton_StickL, SDL_GAMEPAD_BUTTON_LEFT_STICK },
   { HidNpadButton_StickR, SDL_GAMEPAD_BUTTON_RIGHT_STICK },
-  { HidNpadButton_L, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER },
-  /* R is not a button here: like ZR it drives the right trigger axis = FIRE (the engine's
-   * default "Fire: RT"; its "Next weapon: Y, RB" stays on X and Y) */
+  { HidNpadButton_L, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER },     /* previous weapon (engine: LB) */
+  { HidNpadButton_R, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER },    /* next weapon (engine: RB) */
   { HidNpadButton_Up, SDL_GAMEPAD_BUTTON_DPAD_UP },
   { HidNpadButton_Down, SDL_GAMEPAD_BUTTON_DPAD_DOWN },
   { HidNpadButton_Left, SDL_GAMEPAD_BUTTON_DPAD_LEFT },
@@ -108,16 +108,121 @@ static int pointer_active(void) {
   return menu_mode() && g_ptr_moved_once && armGetSystemTick() < g_active_until;
 }
 
+/* ---------------------------------------------------------------- gyro */
+/* Recipe from the Godot/unreal ports (memory: switch-gyro-recipe-axes, full-rate sampling):
+ * sensor Y = turn, sensor X = look up/down (minus), sensor Z = "steering wheel" added to the
+ * turn; read all 17 LIFO samples, average only the fresh ones; pad order FullKey, Handheld,
+ * JoyDual. Here the result goes to the right-stick axes instead of mouse motion. */
+static struct { int enabled, debug; float yaw, pitch, roll, full_dps, deg_per_unit, engine_dz, deadzone; } gc =
+  { 1, 0, 1.0f, 0.6f, 1.0f, 150.0f, 360.0f, 0.16f, 0.4f };
+static int g_gcfg_loaded;
+static HidSixAxisSensorHandle g_gh;
+static u32 g_gstyle_sel;                 /* style bit the handle was taken for */
+static int g_ghave;
+static u64 g_gseq;
+static float g_gx, g_gy;                 /* stick contribution source: dps (turn) and dps (pitch) */
+static u64 g_gfresh_tick;
+static unsigned g_g_fresh_total;
+static float g_g_maxabs[3];
+
+static void gyro_load_cfg(void) {
+  g_gcfg_loaded = 1;
+  FILE *f = fopen("/switch/skynet_sdl_nx/gyro.cfg", "r");
+  if (!f) {
+    f = fopen("/switch/skynet_sdl_nx/gyro.cfg", "w");
+    if (f) {
+      fputs("# gyro look for SkyNET (Switch). Sensor axes: Y = turn, X = look up/down, Z = steering wheel.\n"
+            "# full_dps = angular speed (deg/s) that equals a fully pushed right stick.\n"
+            "enabled 1\nyaw 1.0\npitch 0.6\nroll 1.0\nfull_dps 150\ndeg_per_unit 360\nengine_deadzone 0.16\ndeadzone 0.4\ndebug 0\n", f);
+      fclose(f);
+    }
+    return;
+  }
+  char line[128], key[40]; float v;
+  while (fgets(line, sizeof line, f)) {
+    if (line[0] == '#' || sscanf(line, "%39s %f", key, &v) != 2) continue;
+    if (!strcmp(key, "enabled")) gc.enabled = (int)v;
+    else if (!strcmp(key, "debug")) gc.debug = (int)v;
+    else if (!strcmp(key, "yaw")) gc.yaw = v;
+    else if (!strcmp(key, "pitch")) gc.pitch = v;
+    else if (!strcmp(key, "roll")) gc.roll = v;
+    else if (!strcmp(key, "full_dps")) gc.full_dps = v;
+    else if (!strcmp(key, "deg_per_unit")) gc.deg_per_unit = v;
+    else if (!strcmp(key, "engine_deadzone")) gc.engine_dz = v;
+    else if (!strcmp(key, "deadzone")) gc.deadzone = v;
+  }
+  fclose(f);
+  debugPrintf("[gyro] cfg: enabled=%d yaw=%.2f pitch=%.2f roll=%.2f full_dps=%.0f deg_per_unit=%.0f engine_dz=%.2f dz=%.2f\n",
+              gc.enabled, gc.yaw, gc.pitch, gc.roll, gc.full_dps, gc.deg_per_unit, gc.engine_dz, gc.deadzone);
+}
+/* dps -> stick fraction, stepping over the engine's deadzone */
+static float gyro_stick(float dps) {
+  float a = dps < 0 ? -dps : dps;
+  if (a < gc.deadzone) return 0.0f;
+  float d = a / gc.full_dps; if (d > 1.0f) d = 1.0f;
+  float o = gc.engine_dz + (1.0f - gc.engine_dz) * d;
+  return dps < 0 ? -o : o;
+}
+static void gyro_select(u32 style) {
+  u32 want = (style & HidNpadStyleTag_NpadFullKey) ? HidNpadStyleTag_NpadFullKey
+           : (style & HidNpadStyleTag_NpadHandheld) ? HidNpadStyleTag_NpadHandheld
+           : (style & HidNpadStyleTag_NpadJoyDual) ? HidNpadStyleTag_NpadJoyDual : 0;
+  if (want == g_gstyle_sel) return;
+  g_gstyle_sel = want; g_ghave = 0; g_gseq = 0;
+  if (!want) return;
+  HidNpadIdType id = (want == HidNpadStyleTag_NpadHandheld) ? HidNpadIdType_Handheld : HidNpadIdType_No1;
+  HidSixAxisSensorHandle h[2];
+  Result rc = hidGetSixAxisSensorHandles(h, (want == HidNpadStyleTag_NpadJoyDual) ? 2 : 1, id, (HidNpadStyleTag)want);
+  if (R_FAILED(rc)) { debugPrintf("[gyro] handles failed rc=%#x (style %#x)\n", rc, want); return; }
+  g_gh = h[0];
+  hidStartSixAxisSensor(g_gh);
+  hidSetGyroscopeZeroDriftMode(g_gh, HidGyroscopeZeroDriftMode_Loose);
+  g_ghave = 1;
+  debugPrintf("[gyro] using %s sensor\n", want == HidNpadStyleTag_NpadFullKey ? "Pro Controller" : want == HidNpadStyleTag_NpadHandheld ? "handheld" : "Joy-Con pair");
+}
+/* mean of the FRESH samples only, kept for 30 ms so that polls between two sensor updates
+ * do not read zero */
+static void gyro_update(u64 now, u32 style) {
+  if (!g_gcfg_loaded) gyro_load_cfg();
+  if (!gc.enabled) { g_gx = g_gy = 0; return; }
+  gyro_select(style);
+  if (!g_ghave) { g_gx = g_gy = 0; return; }
+  HidSixAxisSensorState st[17];
+  size_t n = hidGetSixAxisSensorStates(g_gh, st, 17);
+  float sx = 0, sy = 0, sz = 0; int fresh = 0; u64 maxseq = g_gseq;
+  for (size_t i = 0; i < n; i++) {
+    if (st[i].sampling_number <= g_gseq) continue;
+    sx += st[i].angular_velocity.x; sy += st[i].angular_velocity.y; sz += st[i].angular_velocity.z; fresh++;
+    if (st[i].sampling_number > maxseq) maxseq = st[i].sampling_number;
+  }
+  if (fresh) {
+    g_gseq = maxseq; g_gfresh_tick = now; g_g_fresh_total += (unsigned)fresh;
+    float ax = sx / fresh * gc.deg_per_unit, ay = sy / fresh * gc.deg_per_unit, az = sz / fresh * gc.deg_per_unit;
+    if (ax < 0 ? -ax > g_g_maxabs[0] : ax > g_g_maxabs[0]) g_g_maxabs[0] = ax < 0 ? -ax : ax;
+    if (ay < 0 ? -ay > g_g_maxabs[1] : ay > g_g_maxabs[1]) g_g_maxabs[1] = ay < 0 ? -ay : ay;
+    if (az < 0 ? -az > g_g_maxabs[2] : az > g_g_maxabs[2]) g_g_maxabs[2] = az < 0 ? -az : az;
+    g_gx = -(ay * gc.yaw + az * gc.roll);        /* turn: right stick X (right positive) */
+    g_gy = -(ax * gc.pitch);                     /* look: right stick Y (down positive) */
+  } else if (now - g_gfresh_tick > armGetSystemTickFreq() * 3 / 100) {
+    g_gx = g_gy = 0;
+  }
+}
+
 /* ------------------------------------------------------------- refresh */
-/* caller holds g_mx */
+/* caller holds g_mx. The game polls events hundreds of thousands of times a second while
+ * a menu waits (measured: 180000/s); the pad is read at most once per millisecond. */
+static u64 g_last_refresh;
 static void refresh(void) {
   if (!g_ready) return;
   u64 now = armGetSystemTick();
+  if (g_last_refresh && now - g_last_refresh < armGetSystemTickFreq() / 1000) return;
+  g_last_refresh = now;
   float dt = g_last_tick ? (float)(now - g_last_tick) / (float)armGetSystemTickFreq() : 0.0f;
   g_last_tick = now;
   if (dt > 0.1f) dt = 0.1f;
 
   padUpdate(&g_pad);
+  gyro_update(now, padGetStyleSet(&g_pad));
   u64 held = padGetButtons(&g_pad);
   HidAnalogStickState l = padGetStickPos(&g_pad, 0), r = padGetStickPos(&g_pad, 1);
   Sint16 lx = clampv(l.x), ly = clampv(-l.y), rx = clampv(r.x), ry = clampv(-r.y);
@@ -127,6 +232,14 @@ static void refresh(void) {
     g_last_menu = menu;
     debugPrintf("[pad] mode: %s (relative=%d cursor_hidden=%d force=%d)\n", menu ? "MENU/pointer" : "GAMEPLAY/gamepad",
                 g_relative, g_cursor_hidden, g_force);
+  }
+  /* L + R + ZL + ZR together: gyro on/off */
+  {
+    u64 four = HidNpadButton_L | HidNpadButton_R | HidNpadButton_ZL | HidNpadButton_ZR;
+    if ((held & four) == four && (g_prev_held & four) != four) {
+      gc.enabled = !gc.enabled;
+      debugPrintf("[gyro] %s\n", gc.enabled ? "on" : "off");
+    }
   }
   /* L3+R3 together: flip pointer <-> gamepad by hand */
   {
@@ -180,7 +293,13 @@ static void refresh(void) {
   /* ---- axes: the engine sees the sticks only in gameplay ---- */
   g_ax[0] = menu ? 0 : lx; g_ax[1] = menu ? 0 : ly; g_ax[2] = menu ? 0 : rx; g_ax[3] = menu ? 0 : ry;
   g_ax[4] = (held & HidNpadButton_ZL) ? 32767 : 0;
-  g_ax[5] = (held & (HidNpadButton_ZR | HidNpadButton_R)) ? 32767 : 0;   /* both fire */
+  g_ax[5] = (held & HidNpadButton_ZR) ? 32767 : 0;     /* ZR = fire (engine: RT) */
+  if (!menu && gc.enabled) {
+    /* gyro: added to the right stick (look); the engine's own deadzone is stepped over */
+    float sx = gyro_stick(g_gx), sy = gyro_stick(g_gy);
+    int vx = g_ax[2] + (int)(sx * 32767.0f), vy = g_ax[3] + (int)(sy * 32767.0f);
+    g_ax[2] = clampv(vx); g_ax[3] = clampv(vy);
+  }
 
   /* ---- buttons ---- */
   for (int i = 0; i < NMAP; i++) {
@@ -255,6 +374,11 @@ static void stats_tick(void) {
   if (!g_st_t0) g_st_t0 = now;
   if (now - g_st_t0 >= 5 * f) {
     debugPrintf("[pad] 5 s: %u polls, %u submits, max queue %u, mode %s\n", g_st_poll, g_st_submit, g_st_maxq, menu_mode() ? "pointer" : "gamepad");
+    if (gc.enabled) {
+      debugPrintf("[gyro] 5 s: %u fresh samples, peak |rate| x=%.0f y=%.0f z=%.0f deg/s (assuming %.0f deg per unit)\n",
+                  g_g_fresh_total, g_g_maxabs[0], g_g_maxabs[1], g_g_maxabs[2], gc.deg_per_unit);
+    }
+    g_g_fresh_total = 0; g_g_maxabs[0] = g_g_maxabs[1] = g_g_maxabs[2] = 0;
     g_st_t0 = now; g_st_poll = g_st_submit = g_st_maxq = 0;
   }
 }
@@ -273,6 +397,14 @@ bool skynet_SDL_PollEvent(SDL_Event *ev) {
   mutexUnlock(&g_mx);
   while (SDL_PollEvent(ev)) {
     if (!is_touch_event(ev)) return true;
+  }
+  /* nothing to report: when the game spins on this call (menus: ~180000/s measured, which
+   * starved the render thread and made the pointer judder), yield a little */
+  {
+    static u64 last_empty;
+    u64 now = armGetSystemTick();
+    if (last_empty && now - last_empty < armGetSystemTickFreq() / 2000) svcSleepThread(300000ULL);
+    last_empty = armGetSystemTick();
   }
   return false;
 }
