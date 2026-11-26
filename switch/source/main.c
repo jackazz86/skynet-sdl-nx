@@ -14,6 +14,7 @@
 
 extern void shim_tls_install(void);
 static so_module skynet_mod;
+so_module *g_skynet_mod = &skynet_mod;
 
 /* Take (almost) all the RAM the process was given: the GC heap and the 42 MB
  * LOAD zone both live in the newlib heap. */

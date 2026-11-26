@@ -394,8 +394,34 @@ SH(void *, readdir, (DIR *d)) {
 /* --------------------------------------------------------- dl*, EH */
 extern int so_dl_iterate_phdr(int (*cb)(void *, size_t, void *), void *d);
 SH(int, dl_iterate_phdr, (int (*cb)(void *, size_t, void *), void *d)) { return so_dl_iterate_phdr(cb, d); }
-SH(void *, dlopen, (const char *n, int f)) { (void)f; debugPrintf("[dlopen] %s\n", n ? n : "(null)"); return (n && strstr(n, "SDL3")) ? (void *)0x5D1 : NULL; }
-SH(void *, dlsym, (void *h, const char *n)) { debugPrintf("[dlsym] h=%p %s -> NULL (not yet mapped)\n", h, n); return NULL; }
+/* Handles: 0x5D1 = libSDL3 (mapped later), 0x5A1 = "system" libs (libc/libm/libdl/liblog/libz ...,
+ * resolved from our import table), 0x5E1 = the game library itself. */
+extern so_module *g_skynet_mod;
+extern DynLibFunction skynet_libc_imports[];
+extern const int skynet_libc_imports_count;
+SH(void *, dlopen, (const char *n, int f)) {
+  (void)f;
+  void *h = NULL;
+  if (!n) h = (void *)0x5E1;
+  else if (strstr(n, "SDL3")) h = (void *)0x5D1;
+  else if (strstr(n, "SkyNet")) h = (void *)0x5E1;
+  else if (strstr(n, "log") || strstr(n, "libc") || strstr(n, "libm") || strstr(n, "libdl") || strstr(n, "libz")) h = (void *)0x5A1;
+  debugPrintf("[dlopen] %s -> %p\n", n ? n : "(null)", h);
+  return h;
+}
+SH(void *, dlsym, (void *h, const char *n)) {
+  void *r = NULL;
+  if (h == (void *)0x5D1) { /* SDL: not mapped yet */ }
+  else {
+    if (h == (void *)0x5E1 || h == NULL || h == (void *)-1 || h == (void *)0x5A1) {
+      for (int i = 0; i < skynet_libc_imports_count && !r; i++)
+        if (!strcmp(skynet_libc_imports[i].symbol, n)) r = (void *)skynet_libc_imports[i].func;
+    }
+    if (!r && g_skynet_mod && (h == (void *)0x5E1 || h == NULL)) r = (void *)so_try_find_addr_rx(g_skynet_mod, n);
+  }
+  debugPrintf("[dlsym] h=%p %s -> %p\n", h, n, r);
+  return r;
+}
 SH(int, dlclose, (void *h)) { (void)h; return 0; }
 SH(char *, dlerror, (void)) { return NULL; }
 SH(int, dladdr, (const void *a, void *i)) { (void)a; (void)i; return 0; }
