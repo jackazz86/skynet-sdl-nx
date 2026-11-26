@@ -29,3 +29,13 @@ SDL_Init
 SDL_InitSubSystem
 SDL_QuitSubSystem
 SDL_WasInit
+SDL_SetWindowRelativeMouseMode
+SDL_HideCursor
+SDL_ShowCursor
+SDL_GetMouseState
+SDL_CreateGPUDeviceWithProperties
+SDL_CreateGPUDevice
+SDL_WaitAndAcquireGPUSwapchainTexture
+SDL_AcquireGPUSwapchainTexture
+SDL_SubmitGPUCommandBuffer
+SDL_SubmitGPUCommandBufferAndAcquireFence

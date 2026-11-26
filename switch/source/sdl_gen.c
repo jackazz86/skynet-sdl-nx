@@ -32,9 +32,18 @@ extern void skynet_SDL_Init(void);
 extern void skynet_SDL_InitSubSystem(void);
 extern void skynet_SDL_QuitSubSystem(void);
 extern void skynet_SDL_WasInit(void);
+extern void skynet_SDL_SetWindowRelativeMouseMode(void);
+extern void skynet_SDL_HideCursor(void);
+extern void skynet_SDL_ShowCursor(void);
+extern void skynet_SDL_GetMouseState(void);
+extern void skynet_SDL_CreateGPUDeviceWithProperties(void);
+extern void skynet_SDL_CreateGPUDevice(void);
+extern void skynet_SDL_WaitAndAcquireGPUSwapchainTexture(void);
+extern void skynet_SDL_AcquireGPUSwapchainTexture(void);
+extern void skynet_SDL_SubmitGPUCommandBuffer(void);
+extern void skynet_SDL_SubmitGPUCommandBufferAndAcquireFence(void);
 extern void SDL_AcquireCameraFrame(void);
 extern void SDL_AcquireGPUCommandBuffer(void);
-extern void SDL_AcquireGPUSwapchainTexture(void);
 extern void SDL_AddAtomicInt(void);
 extern void SDL_AddEventWatch(void);
 extern void SDL_AddGamepadMapping(void);
@@ -120,8 +129,6 @@ extern void SDL_CreateDirectory(void);
 extern void SDL_CreateEnvironment(void);
 extern void SDL_CreateGPUBuffer(void);
 extern void SDL_CreateGPUComputePipeline(void);
-extern void SDL_CreateGPUDevice(void);
-extern void SDL_CreateGPUDeviceWithProperties(void);
 extern void SDL_CreateGPUGraphicsPipeline(void);
 extern void SDL_CreateGPUSampler(void);
 extern void SDL_CreateGPUShader(void);
@@ -425,7 +432,6 @@ extern void SDL_GetMice(void);
 extern void SDL_GetModState(void);
 extern void SDL_GetMouseFocus(void);
 extern void SDL_GetMouseNameForID(void);
-extern void SDL_GetMouseState(void);
 extern void SDL_GetNaturalDisplayOrientation(void);
 extern void SDL_GetNumAllocations(void);
 extern void SDL_GetNumAudioDrivers(void);
@@ -621,7 +627,6 @@ extern void SDL_HasSSE41(void);
 extern void SDL_HasSSE42(void);
 extern void SDL_HasSVE2(void);
 extern void SDL_HasScreenKeyboardSupport(void);
-extern void SDL_HideCursor(void);
 extern void SDL_HideWindow(void);
 extern void SDL_IOFromConstMem(void);
 extern void SDL_IOFromDynamicMem(void);
@@ -926,7 +931,6 @@ extern void SDL_SetWindowParent(void);
 extern void SDL_SetWindowPosition(void);
 extern void SDL_SetWindowProgressState(void);
 extern void SDL_SetWindowProgressValue(void);
-extern void SDL_SetWindowRelativeMouseMode(void);
 extern void SDL_SetWindowResizable(void);
 extern void SDL_SetWindowShape(void);
 extern void SDL_SetWindowSize(void);
@@ -939,7 +943,6 @@ extern void SDL_SetiOSEventPump(void);
 extern void SDL_ShouldInit(void);
 extern void SDL_ShouldQuit(void);
 extern void SDL_ShowAndroidToast(void);
-extern void SDL_ShowCursor(void);
 extern void SDL_ShowFileDialogWithProperties(void);
 extern void SDL_ShowMessageBox(void);
 extern void SDL_ShowOpenFileDialog(void);
@@ -962,8 +965,6 @@ extern void SDL_StopTextInput(void);
 extern void SDL_StorageReady(void);
 extern void SDL_StretchSurface(void);
 extern void SDL_StringToGUID(void);
-extern void SDL_SubmitGPUCommandBuffer(void);
-extern void SDL_SubmitGPUCommandBufferAndAcquireFence(void);
 extern void SDL_SurfaceHasAlternateImages(void);
 extern void SDL_SurfaceHasColorKey(void);
 extern void SDL_SurfaceHasRLE(void);
@@ -1011,7 +1012,6 @@ extern void SDL_Vulkan_GetPresentationSupport(void);
 extern void SDL_Vulkan_GetVkGetInstanceProcAddr(void);
 extern void SDL_Vulkan_LoadLibrary(void);
 extern void SDL_Vulkan_UnloadLibrary(void);
-extern void SDL_WaitAndAcquireGPUSwapchainTexture(void);
 extern void SDL_WaitAsyncIOResult(void);
 extern void SDL_WaitCondition(void);
 extern void SDL_WaitConditionTimeout(void);
@@ -1251,9 +1251,18 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_InitSubSystem", (uintptr_t)&skynet_SDL_InitSubSystem },
   { "SDL_QuitSubSystem", (uintptr_t)&skynet_SDL_QuitSubSystem },
   { "SDL_WasInit", (uintptr_t)&skynet_SDL_WasInit },
+  { "SDL_SetWindowRelativeMouseMode", (uintptr_t)&skynet_SDL_SetWindowRelativeMouseMode },
+  { "SDL_HideCursor", (uintptr_t)&skynet_SDL_HideCursor },
+  { "SDL_ShowCursor", (uintptr_t)&skynet_SDL_ShowCursor },
+  { "SDL_GetMouseState", (uintptr_t)&skynet_SDL_GetMouseState },
+  { "SDL_CreateGPUDeviceWithProperties", (uintptr_t)&skynet_SDL_CreateGPUDeviceWithProperties },
+  { "SDL_CreateGPUDevice", (uintptr_t)&skynet_SDL_CreateGPUDevice },
+  { "SDL_WaitAndAcquireGPUSwapchainTexture", (uintptr_t)&skynet_SDL_WaitAndAcquireGPUSwapchainTexture },
+  { "SDL_AcquireGPUSwapchainTexture", (uintptr_t)&skynet_SDL_AcquireGPUSwapchainTexture },
+  { "SDL_SubmitGPUCommandBuffer", (uintptr_t)&skynet_SDL_SubmitGPUCommandBuffer },
+  { "SDL_SubmitGPUCommandBufferAndAcquireFence", (uintptr_t)&skynet_SDL_SubmitGPUCommandBufferAndAcquireFence },
   { "SDL_AcquireCameraFrame", (uintptr_t)&SDL_AcquireCameraFrame },
   { "SDL_AcquireGPUCommandBuffer", (uintptr_t)&SDL_AcquireGPUCommandBuffer },
-  { "SDL_AcquireGPUSwapchainTexture", (uintptr_t)&SDL_AcquireGPUSwapchainTexture },
   { "SDL_AddAtomicInt", (uintptr_t)&SDL_AddAtomicInt },
   { "SDL_AddEventWatch", (uintptr_t)&SDL_AddEventWatch },
   { "SDL_AddGamepadMapping", (uintptr_t)&SDL_AddGamepadMapping },
@@ -1339,8 +1348,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_CreateEnvironment", (uintptr_t)&SDL_CreateEnvironment },
   { "SDL_CreateGPUBuffer", (uintptr_t)&SDL_CreateGPUBuffer },
   { "SDL_CreateGPUComputePipeline", (uintptr_t)&SDL_CreateGPUComputePipeline },
-  { "SDL_CreateGPUDevice", (uintptr_t)&SDL_CreateGPUDevice },
-  { "SDL_CreateGPUDeviceWithProperties", (uintptr_t)&SDL_CreateGPUDeviceWithProperties },
   { "SDL_CreateGPUGraphicsPipeline", (uintptr_t)&SDL_CreateGPUGraphicsPipeline },
   { "SDL_CreateGPUSampler", (uintptr_t)&SDL_CreateGPUSampler },
   { "SDL_CreateGPUShader", (uintptr_t)&SDL_CreateGPUShader },
@@ -1644,7 +1651,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_GetModState", (uintptr_t)&SDL_GetModState },
   { "SDL_GetMouseFocus", (uintptr_t)&SDL_GetMouseFocus },
   { "SDL_GetMouseNameForID", (uintptr_t)&SDL_GetMouseNameForID },
-  { "SDL_GetMouseState", (uintptr_t)&SDL_GetMouseState },
   { "SDL_GetNaturalDisplayOrientation", (uintptr_t)&SDL_GetNaturalDisplayOrientation },
   { "SDL_GetNumAllocations", (uintptr_t)&SDL_GetNumAllocations },
   { "SDL_GetNumAudioDrivers", (uintptr_t)&SDL_GetNumAudioDrivers },
@@ -1840,7 +1846,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_HasSSE42", (uintptr_t)&SDL_HasSSE42 },
   { "SDL_HasSVE2", (uintptr_t)&SDL_HasSVE2 },
   { "SDL_HasScreenKeyboardSupport", (uintptr_t)&SDL_HasScreenKeyboardSupport },
-  { "SDL_HideCursor", (uintptr_t)&SDL_HideCursor },
   { "SDL_HideWindow", (uintptr_t)&SDL_HideWindow },
   { "SDL_IOFromConstMem", (uintptr_t)&SDL_IOFromConstMem },
   { "SDL_IOFromDynamicMem", (uintptr_t)&SDL_IOFromDynamicMem },
@@ -2145,7 +2150,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_SetWindowPosition", (uintptr_t)&SDL_SetWindowPosition },
   { "SDL_SetWindowProgressState", (uintptr_t)&SDL_SetWindowProgressState },
   { "SDL_SetWindowProgressValue", (uintptr_t)&SDL_SetWindowProgressValue },
-  { "SDL_SetWindowRelativeMouseMode", (uintptr_t)&SDL_SetWindowRelativeMouseMode },
   { "SDL_SetWindowResizable", (uintptr_t)&SDL_SetWindowResizable },
   { "SDL_SetWindowShape", (uintptr_t)&SDL_SetWindowShape },
   { "SDL_SetWindowSize", (uintptr_t)&SDL_SetWindowSize },
@@ -2158,7 +2162,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_ShouldInit", (uintptr_t)&SDL_ShouldInit },
   { "SDL_ShouldQuit", (uintptr_t)&SDL_ShouldQuit },
   { "SDL_ShowAndroidToast", (uintptr_t)&SDL_ShowAndroidToast },
-  { "SDL_ShowCursor", (uintptr_t)&SDL_ShowCursor },
   { "SDL_ShowFileDialogWithProperties", (uintptr_t)&SDL_ShowFileDialogWithProperties },
   { "SDL_ShowMessageBox", (uintptr_t)&SDL_ShowMessageBox },
   { "SDL_ShowOpenFileDialog", (uintptr_t)&SDL_ShowOpenFileDialog },
@@ -2181,8 +2184,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_StorageReady", (uintptr_t)&SDL_StorageReady },
   { "SDL_StretchSurface", (uintptr_t)&SDL_StretchSurface },
   { "SDL_StringToGUID", (uintptr_t)&SDL_StringToGUID },
-  { "SDL_SubmitGPUCommandBuffer", (uintptr_t)&SDL_SubmitGPUCommandBuffer },
-  { "SDL_SubmitGPUCommandBufferAndAcquireFence", (uintptr_t)&SDL_SubmitGPUCommandBufferAndAcquireFence },
   { "SDL_SurfaceHasAlternateImages", (uintptr_t)&SDL_SurfaceHasAlternateImages },
   { "SDL_SurfaceHasColorKey", (uintptr_t)&SDL_SurfaceHasColorKey },
   { "SDL_SurfaceHasRLE", (uintptr_t)&SDL_SurfaceHasRLE },
@@ -2230,7 +2231,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_Vulkan_GetVkGetInstanceProcAddr", (uintptr_t)&SDL_Vulkan_GetVkGetInstanceProcAddr },
   { "SDL_Vulkan_LoadLibrary", (uintptr_t)&SDL_Vulkan_LoadLibrary },
   { "SDL_Vulkan_UnloadLibrary", (uintptr_t)&SDL_Vulkan_UnloadLibrary },
-  { "SDL_WaitAndAcquireGPUSwapchainTexture", (uintptr_t)&SDL_WaitAndAcquireGPUSwapchainTexture },
   { "SDL_WaitAsyncIOResult", (uintptr_t)&SDL_WaitAsyncIOResult },
   { "SDL_WaitCondition", (uintptr_t)&SDL_WaitCondition },
   { "SDL_WaitConditionTimeout", (uintptr_t)&SDL_WaitConditionTimeout },
