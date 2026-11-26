@@ -170,6 +170,7 @@ extern char shim_readdir[];
 extern char shim_readlink[];
 extern char shim_recvfrom[];
 extern char shim_recvmsg[];
+extern char shim_rename[];
 extern char shim_sched_getaffinity[];
 extern char shim_sched_getcpu[];
 extern char shim_sched_yield[];
@@ -419,7 +420,7 @@ DynLibFunction skynet_libc_imports[] = {
   { "realpath", (uintptr_t)&realpath },
   { "recvfrom", (uintptr_t)&shim_recvfrom },
   { "recvmsg", (uintptr_t)&shim_recvmsg },
-  { "rename", (uintptr_t)&rename },
+  { "rename", (uintptr_t)&shim_rename },
   { "rmdir", (uintptr_t)&rmdir },
   { "sched_getaffinity", (uintptr_t)&shim_sched_getaffinity },
   { "sched_getcpu", (uintptr_t)&shim_sched_getcpu },

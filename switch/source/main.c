@@ -15,6 +15,8 @@
 #include <pthread.h>
 
 extern void shim_tls_install(void);
+extern void *input_pad_thread(void *);
+extern void input_pad_stop(void);
 
 /* SDL_main (the game's managed entry point) runs on its own thread, like the
  * SDLThread on Android, with a big stack. */
@@ -147,6 +149,7 @@ int main(int argc, char **argv) {
         debugPrintf("[hb] t=%us heap in use %u MB (arena %u MB)\n", (tick + 1) / 20, (unsigned)(mi.uordblks >> 20), (unsigned)(mi.arena >> 20));
       }
     }
+    input_pad_stop();
     /* the game released the window (or died): bring the text console back */
     consoleInit(NULL);
     util_console_active(1);

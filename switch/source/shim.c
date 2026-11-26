@@ -500,3 +500,17 @@ SH(ssize_t, pwrite, (int fd, const void *b, size_t n, long o)) {
   off_t cur = lseek(fd, 0, SEEK_CUR); if (lseek(fd, o, SEEK_SET) < 0) return -1;
   ssize_t r = write(fd, b, n); lseek(fd, cur, SEEK_SET); return r;
 }
+
+/* Horizon's FS refuses to rename onto an existing file (EEXIST); POSIX replaces it.
+ * .NET's File.Move(overwrite) and the game's cache ZIP commit rely on that. */
+SH(int, rename, (const char *a, const char *b)) {
+  int r = rename(a, b);
+  if (r) {
+    struct stat sa, sb;
+    if (!stat(a, &sa) && !stat(b, &sb) && S_ISREG(sb.st_mode) && S_ISREG(sa.st_mode)) {
+      unlink(b);
+      r = rename(a, b);
+    }
+  }
+  return r;
+}
