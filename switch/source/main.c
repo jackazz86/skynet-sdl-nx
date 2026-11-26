@@ -10,6 +10,7 @@
 #include "so_util.h"
 #include "util.h"
 #include "imports.h"
+#include "jni_fake.h"
 
 extern void shim_tls_install(void);
 static so_module skynet_mod;
@@ -49,7 +50,7 @@ int main(int argc, char **argv) {
   nxlinkStdio();
   mkdir(APP_DIR, 0777);
   util_log_open();
-  debugPrintf("== skynet_sdl_nx phase 1b ==\n");
+  debugPrintf("== skynet_sdl_nx phase 1c ==\n");
   {
     u64 total = 0, used = 0;
     svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
@@ -85,7 +86,13 @@ int main(int argc, char **argv) {
   so_flush_caches(&skynet_mod);
   debugPrintf("== running init_array ==\n");
   so_execute_init_array(&skynet_mod);
-  debugPrintf("== init_array returned OK (JNI_OnLoad not called) ==\n");
+  debugPrintf("== init_array returned OK ==\n");
+  if (e_onload) {
+    debugPrintf("== calling JNI_OnLoad ==\n");
+    int (*onload)(void *, void *) = (int (*)(void *, void *))e_onload;
+    int ver = onload(jni_fake_vm(), NULL);
+    debugPrintf("== JNI_OnLoad returned %#x ==\n", ver);
+  }
 
 done:
   debugFlush();
