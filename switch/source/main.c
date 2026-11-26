@@ -139,7 +139,14 @@ int main(int argc, char **argv) {
     pthread_t th;
     int prc = pthread_create(&th, &at, sdl_main_thread, NULL);
     debugPrintf("== SDL_main thread started rc=%d ==\n", prc);
-    while (appletMainLoop() && !g_sdl_done) svcSleepThread(50000000ULL);
+    /* heartbeat every 10 s: tells "slow but alive" from "hung" when the log is read afterwards */
+    for (unsigned tick = 0; appletMainLoop() && !g_sdl_done; tick++) {
+      svcSleepThread(50000000ULL);
+      if (tick % 200 == 199) {
+        struct mallinfo mi = mallinfo();
+        debugPrintf("[hb] t=%us heap in use %u MB (arena %u MB)\n", (tick + 1) / 20, (unsigned)(mi.uordblks >> 20), (unsigned)(mi.arena >> 20));
+      }
+    }
     /* the game released the window (or died): bring the text console back */
     consoleInit(NULL);
     util_console_active(1);
