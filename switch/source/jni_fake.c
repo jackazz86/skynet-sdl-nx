@@ -177,10 +177,10 @@ static void *g_vm_fns[8], *g_env_fns[JNI_SLOTS];
 static void *g_vm_ptr = g_vm_fns, *g_env_ptr = g_env_fns;   /* JavaVM = &g_vm_ptr, JNIEnv = &g_env_ptr */
 
 static int vm_GetEnv(void *vm, void **penv, int ver) {
-  (void)vm; debugPrintf("[jni] GetEnv(ver=%#x)\n", ver); *penv = &g_env_ptr; return 0;
+  (void)vm; { static int n; if (n++ < 5) debugPrintf("[jni] GetEnv(ver=%#x)\n", ver); } *penv = &g_env_ptr; return 0;
 }
 static int vm_Attach(void *vm, void **penv, void *args) {
-  (void)vm; (void)args; debugPrintf("[jni] AttachCurrentThread\n"); *penv = &g_env_ptr; return 0;
+  (void)vm; (void)args; { static int n; if (n++ < 5) debugPrintf("[jni] AttachCurrentThread\n"); } *penv = &g_env_ptr; return 0;
 }
 static int vm_Detach(void *vm) { (void)vm; return 0; }
 static intptr_t f_GetJavaVM(void *env, void **vm) { (void)env; *vm = &g_vm_ptr; return 0; }
