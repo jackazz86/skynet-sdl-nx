@@ -15,11 +15,13 @@
  *    mode auto -> off -> on (fallback if the detection is wrong). */
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <switch.h>
 #include <SDL3/SDL.h>
 #include "util.h"
+#include "gyro_nx.h"
 
 static PadState g_pad;
 static Mutex g_mx;
@@ -70,7 +72,44 @@ static const struct { u64 mask; int button; } MAP[] = {
 #define NMAP ((int)(sizeof MAP / sizeof MAP[0]))
 #define IDX_A 0
 
+/* The game's right-stick dead zone (settings "padDeadZone", default 15 %) is set to 0 and
+ * applied by the port instead (radial, same value, gyro_cfg.stick_deadzone): the gyro is
+ * added to the stick LINEARLY, and a dead zone inside the engine would eat small rotations
+ * or make them jump. Runs before the game reads its settings. The user's value is kept in
+ * gyro.cfg. */
+static void patch_engine_deadzone(void) {
+  const char *path = "/switch/skynet_sdl_nx/skynet-csharp-settings.json";
+  gyro_nx_load_cfg();
+  FILE *f = fopen(path, "rb");
+  if (!f) return;                              /* first run: the game writes it; patched next start */
+  fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+  if (n <= 0 || n > 200000) { fclose(f); return; }
+  char *buf = malloc((size_t)n + 1);
+  if (!buf) { fclose(f); return; }
+  size_t got = fread(buf, 1, (size_t)n, f); fclose(f);
+  buf[got] = 0;
+  static const char key[] = "\"padDeadZone\":";
+  char *k = strstr(buf, key);
+  if (k) {
+    char *v = k + sizeof key - 1;
+    while (*v == ' ') v++;
+    int old = atoi(v);
+    if (old > 0) {
+      char *e = v; while (*e >= '0' && *e <= '9') e++;
+      FILE *w = fopen(path, "wb");
+      if (w) {
+        fwrite(buf, 1, (size_t)(v - buf), w); fputc('0', w); fwrite(e, 1, got - (size_t)(e - buf), w); fclose(w);
+        gyro_cfg.stick_deadzone = old / 100.0f;
+        gyro_nx_save_cfg();
+        debugPrintf("[pad] game dead zone %d%% moved into the port (settings padDeadZone = 0, gyro.cfg stick_deadzone %.2f)\n", old, gyro_cfg.stick_deadzone);
+      }
+    }
+  }
+  free(buf);
+}
+
 void input_pad_init(void) {
+  patch_engine_deadzone();
   padConfigureInput(1, HidNpadStyleSet_NpadStandard);
   padInitializeDefault(&g_pad);
   g_ready = 1;
@@ -108,106 +147,6 @@ static int pointer_active(void) {
   return menu_mode() && g_ptr_moved_once && armGetSystemTick() < g_active_until;
 }
 
-/* ---------------------------------------------------------------- gyro */
-/* Recipe from the Godot/unreal ports (memory: switch-gyro-recipe-axes, full-rate sampling):
- * sensor Y = turn, sensor X = look up/down (minus), sensor Z = "steering wheel" added to the
- * turn; read all 17 LIFO samples, average only the fresh ones; pad order FullKey, Handheld,
- * JoyDual. Here the result goes to the right-stick axes instead of mouse motion. */
-static struct { int enabled, debug; float yaw, pitch, roll, full_dps, deg_per_unit, engine_dz, deadzone; } gc =
-  { 1, 0, 1.0f, 0.6f, 1.0f, 150.0f, 360.0f, 0.16f, 0.4f };
-static int g_gcfg_loaded;
-static HidSixAxisSensorHandle g_gh;
-static u32 g_gstyle_sel;                 /* style bit the handle was taken for */
-static int g_ghave;
-static u64 g_gseq;
-static float g_gx, g_gy;                 /* stick contribution source: dps (turn) and dps (pitch) */
-static u64 g_gfresh_tick;
-static unsigned g_g_fresh_total;
-static float g_g_maxabs[3];
-
-static void gyro_load_cfg(void) {
-  g_gcfg_loaded = 1;
-  FILE *f = fopen("/switch/skynet_sdl_nx/gyro.cfg", "r");
-  if (!f) {
-    f = fopen("/switch/skynet_sdl_nx/gyro.cfg", "w");
-    if (f) {
-      fputs("# gyro look for SkyNET (Switch). Sensor axes: Y = turn, X = look up/down, Z = steering wheel.\n"
-            "# full_dps = angular speed (deg/s) that equals a fully pushed right stick.\n"
-            "enabled 1\nyaw 1.0\npitch 0.6\nroll 1.0\nfull_dps 150\ndeg_per_unit 360\nengine_deadzone 0.16\ndeadzone 0.4\ndebug 0\n", f);
-      fclose(f);
-    }
-    return;
-  }
-  char line[128], key[40]; float v;
-  while (fgets(line, sizeof line, f)) {
-    if (line[0] == '#' || sscanf(line, "%39s %f", key, &v) != 2) continue;
-    if (!strcmp(key, "enabled")) gc.enabled = (int)v;
-    else if (!strcmp(key, "debug")) gc.debug = (int)v;
-    else if (!strcmp(key, "yaw")) gc.yaw = v;
-    else if (!strcmp(key, "pitch")) gc.pitch = v;
-    else if (!strcmp(key, "roll")) gc.roll = v;
-    else if (!strcmp(key, "full_dps")) gc.full_dps = v;
-    else if (!strcmp(key, "deg_per_unit")) gc.deg_per_unit = v;
-    else if (!strcmp(key, "engine_deadzone")) gc.engine_dz = v;
-    else if (!strcmp(key, "deadzone")) gc.deadzone = v;
-  }
-  fclose(f);
-  debugPrintf("[gyro] cfg: enabled=%d yaw=%.2f pitch=%.2f roll=%.2f full_dps=%.0f deg_per_unit=%.0f engine_dz=%.2f dz=%.2f\n",
-              gc.enabled, gc.yaw, gc.pitch, gc.roll, gc.full_dps, gc.deg_per_unit, gc.engine_dz, gc.deadzone);
-}
-/* dps -> stick fraction, stepping over the engine's deadzone */
-static float gyro_stick(float dps) {
-  float a = dps < 0 ? -dps : dps;
-  if (a < gc.deadzone) return 0.0f;
-  float d = a / gc.full_dps; if (d > 1.0f) d = 1.0f;
-  float o = gc.engine_dz + (1.0f - gc.engine_dz) * d;
-  return dps < 0 ? -o : o;
-}
-static void gyro_select(u32 style) {
-  u32 want = (style & HidNpadStyleTag_NpadFullKey) ? HidNpadStyleTag_NpadFullKey
-           : (style & HidNpadStyleTag_NpadHandheld) ? HidNpadStyleTag_NpadHandheld
-           : (style & HidNpadStyleTag_NpadJoyDual) ? HidNpadStyleTag_NpadJoyDual : 0;
-  if (want == g_gstyle_sel) return;
-  g_gstyle_sel = want; g_ghave = 0; g_gseq = 0;
-  if (!want) return;
-  HidNpadIdType id = (want == HidNpadStyleTag_NpadHandheld) ? HidNpadIdType_Handheld : HidNpadIdType_No1;
-  HidSixAxisSensorHandle h[2];
-  Result rc = hidGetSixAxisSensorHandles(h, (want == HidNpadStyleTag_NpadJoyDual) ? 2 : 1, id, (HidNpadStyleTag)want);
-  if (R_FAILED(rc)) { debugPrintf("[gyro] handles failed rc=%#x (style %#x)\n", rc, want); return; }
-  g_gh = h[0];
-  hidStartSixAxisSensor(g_gh);
-  hidSetGyroscopeZeroDriftMode(g_gh, HidGyroscopeZeroDriftMode_Loose);
-  g_ghave = 1;
-  debugPrintf("[gyro] using %s sensor\n", want == HidNpadStyleTag_NpadFullKey ? "Pro Controller" : want == HidNpadStyleTag_NpadHandheld ? "handheld" : "Joy-Con pair");
-}
-/* mean of the FRESH samples only, kept for 30 ms so that polls between two sensor updates
- * do not read zero */
-static void gyro_update(u64 now, u32 style) {
-  if (!g_gcfg_loaded) gyro_load_cfg();
-  if (!gc.enabled) { g_gx = g_gy = 0; return; }
-  gyro_select(style);
-  if (!g_ghave) { g_gx = g_gy = 0; return; }
-  HidSixAxisSensorState st[17];
-  size_t n = hidGetSixAxisSensorStates(g_gh, st, 17);
-  float sx = 0, sy = 0, sz = 0; int fresh = 0; u64 maxseq = g_gseq;
-  for (size_t i = 0; i < n; i++) {
-    if (st[i].sampling_number <= g_gseq) continue;
-    sx += st[i].angular_velocity.x; sy += st[i].angular_velocity.y; sz += st[i].angular_velocity.z; fresh++;
-    if (st[i].sampling_number > maxseq) maxseq = st[i].sampling_number;
-  }
-  if (fresh) {
-    g_gseq = maxseq; g_gfresh_tick = now; g_g_fresh_total += (unsigned)fresh;
-    float ax = sx / fresh * gc.deg_per_unit, ay = sy / fresh * gc.deg_per_unit, az = sz / fresh * gc.deg_per_unit;
-    if (ax < 0 ? -ax > g_g_maxabs[0] : ax > g_g_maxabs[0]) g_g_maxabs[0] = ax < 0 ? -ax : ax;
-    if (ay < 0 ? -ay > g_g_maxabs[1] : ay > g_g_maxabs[1]) g_g_maxabs[1] = ay < 0 ? -ay : ay;
-    if (az < 0 ? -az > g_g_maxabs[2] : az > g_g_maxabs[2]) g_g_maxabs[2] = az < 0 ? -az : az;
-    g_gx = -(ay * gc.yaw + az * gc.roll);        /* turn: right stick X (right positive) */
-    g_gy = -(ax * gc.pitch);                     /* look: right stick Y (down positive) */
-  } else if (now - g_gfresh_tick > armGetSystemTickFreq() * 3 / 100) {
-    g_gx = g_gy = 0;
-  }
-}
-
 /* ------------------------------------------------------------- refresh */
 /* caller holds g_mx. The game polls events hundreds of thousands of times a second while
  * a menu waits (measured: 180000/s); the pad is read at most once per millisecond. */
@@ -222,7 +161,6 @@ static void refresh(void) {
   if (dt > 0.1f) dt = 0.1f;
 
   padUpdate(&g_pad);
-  gyro_update(now, padGetStyleSet(&g_pad));
   u64 held = padGetButtons(&g_pad);
   HidAnalogStickState l = padGetStickPos(&g_pad, 0), r = padGetStickPos(&g_pad, 1);
   Sint16 lx = clampv(l.x), ly = clampv(-l.y), rx = clampv(r.x), ry = clampv(-r.y);
@@ -237,8 +175,7 @@ static void refresh(void) {
   {
     u64 four = HidNpadButton_L | HidNpadButton_R | HidNpadButton_ZL | HidNpadButton_ZR;
     if ((held & four) == four && (g_prev_held & four) != four) {
-      gc.enabled = !gc.enabled;
-      debugPrintf("[gyro] %s\n", gc.enabled ? "on" : "off");
+      gyro_nx_toggle();
     }
   }
   /* L3+R3 together: flip pointer <-> gamepad by hand */
@@ -291,15 +228,27 @@ static void refresh(void) {
   int ptr_on = pointer_active();
 
   /* ---- axes: the engine sees the sticks only in gameplay ---- */
-  g_ax[0] = menu ? 0 : lx; g_ax[1] = menu ? 0 : ly; g_ax[2] = menu ? 0 : rx; g_ax[3] = menu ? 0 : ry;
+  /* Right stick = look. The port applies its dead zone (radial, rescaled: the game's own was
+   * set to 0 at start, see patch_engine_deadzone) so that the gyro can be added LINEARLY: a
+   * rate in deg/s over the game's full-stick rate (315 turn, 180 look) is exactly that rate. */
+  float rvx = rx / 32767.0f, rvy = ry / 32767.0f;
+  {
+    float dz = gyro_cfg.stick_deadzone, m = sqrtf(rvx * rvx + rvy * rvy);
+    if (m < dz) { rvx = rvy = 0.0f; }
+    else if (m > 0.0f) { float k = (m - dz) / (1.0f - dz) / m; rvx *= k; rvy *= k; }
+  }
+  float gdx = 0.0f, gdy = 0.0f;
+  if (!menu && gyro_cfg.enabled) {
+    float tdps, pdps;
+    gyro_nx_sample(now, &tdps, &pdps);
+    gdx = tdps / gyro_cfg.yaw_full; gdy = pdps / gyro_cfg.pitch_full;
+  }
+  float tx = rvx + gdx, ty = rvy + gdy, tm = sqrtf(tx * tx + ty * ty);
+  if (tm > 1.0f) { tx /= tm; ty /= tm; }
+  g_ax[0] = menu ? 0 : lx; g_ax[1] = menu ? 0 : ly;
+  g_ax[2] = menu ? 0 : clampv((int)(tx * 32767.0f)); g_ax[3] = menu ? 0 : clampv((int)(ty * 32767.0f));
   g_ax[4] = (held & HidNpadButton_ZL) ? 32767 : 0;
   g_ax[5] = (!menu && (held & HidNpadButton_ZR)) ? 32767 : 0;     /* ZR = fire (engine: RT); in menus it is the mouse click */
-  if (!menu && gc.enabled) {
-    /* gyro: added to the right stick (look); the engine's own deadzone is stepped over */
-    float sx = gyro_stick(g_gx), sy = gyro_stick(g_gy);
-    int vx = g_ax[2] + (int)(sx * 32767.0f), vy = g_ax[3] + (int)(sy * 32767.0f);
-    g_ax[2] = clampv(vx); g_ax[3] = clampv(vy);
-  }
 
   /* ---- buttons ---- */
   for (int i = 0; i < NMAP; i++) {
@@ -328,7 +277,7 @@ static void refresh(void) {
   g_prev_held = held;
   for (int a = 0; a < 6; a++) {
     int d = g_ax[a] - g_pax[a]; if (d < 0) d = -d;
-    if (d >= 256 || (g_ax[a] == 0 && g_pax[a] != 0)) {
+    if (d >= 96 || (g_ax[a] == 0 && g_pax[a] != 0)) {
       SDL_zero(e); e.type = SDL_EVENT_GAMEPAD_AXIS_MOTION;
       e.gaxis.timestamp = SDL_GetTicksNS(); e.gaxis.which = 1; e.gaxis.axis = (Uint8)a; e.gaxis.value = g_ax[a];
       push(&e); g_pax[a] = g_ax[a];
@@ -377,11 +326,7 @@ static void stats_tick(void) {
   if (!g_st_t0) g_st_t0 = now;
   if (now - g_st_t0 >= 5 * f) {
     debugPrintf("[pad] 5 s: %u polls, %u submits, max queue %u, mode %s\n", g_st_poll, g_st_submit, g_st_maxq, menu_mode() ? "pointer" : "gamepad");
-    if (gc.enabled) {
-      debugPrintf("[gyro] 5 s: %u fresh samples, peak |rate| x=%.0f y=%.0f z=%.0f deg/s (assuming %.0f deg per unit)\n",
-                  g_g_fresh_total, g_g_maxabs[0], g_g_maxabs[1], g_g_maxabs[2], gc.deg_per_unit);
-    }
-    g_g_fresh_total = 0; g_g_maxabs[0] = g_g_maxabs[1] = g_g_maxabs[2] = 0;
+    if (gyro_cfg.enabled) { char gb[160]; gyro_nx_stats(gb, sizeof gb); debugPrintf("[gyro] 5 s: %s\n", gb); }
     g_st_t0 = now; g_st_poll = g_st_submit = g_st_maxq = 0;
   }
 }
