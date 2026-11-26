@@ -90,12 +90,12 @@ static intptr_t core_call(int is_static, int ret_obj, intptr_t recv, intptr_t mi
 #define MK_CALL(PFX, STATIC, RETOBJ) \
   static intptr_t PFX##_p(void *env, intptr_t o, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) { (void)env; return core_call(STATIC, RETOBJ, o, mid, a0, a1, a2); } \
   static intptr_t PFX##_v(void *env, intptr_t o, intptr_t mid, va_list ap) { (void)env; intptr_t a0 = va_arg(ap, intptr_t), a1 = va_arg(ap, intptr_t), a2 = va_arg(ap, intptr_t); return core_call(STATIC, RETOBJ, o, mid, a0, a1, a2); } \
-  static intptr_t PFX##_a(void *env, intptr_t o, intptr_t mid, const intptr_t *a) { (void)env; return core_call(STATIC, RETOBJ, o, mid, a[0], a[1], a[2]); }
+  static intptr_t PFX##_a(void *env, intptr_t o, intptr_t mid, const intptr_t *a) { static const intptr_t z[3] = {0, 0, 0}; if (!a) a = z; (void)env; return core_call(STATIC, RETOBJ, o, mid, a[0], a[1], a[2]); }
 MK_CALL(ci_o, 0, 1) MK_CALL(ci_z, 0, 0) MK_CALL(cs_o, 1, 1) MK_CALL(cs_z, 1, 0)
 #define MK_CALLNV(PFX, RETOBJ) \
   static intptr_t PFX##_p(void *env, intptr_t o, intptr_t cls, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) { (void)env; (void)cls; return core_call(0, RETOBJ, o, mid, a0, a1, a2); } \
   static intptr_t PFX##_v(void *env, intptr_t o, intptr_t cls, intptr_t mid, va_list ap) { (void)env; (void)cls; intptr_t a0 = va_arg(ap, intptr_t), a1 = va_arg(ap, intptr_t), a2 = va_arg(ap, intptr_t); return core_call(0, RETOBJ, o, mid, a0, a1, a2); } \
-  static intptr_t PFX##_a(void *env, intptr_t o, intptr_t cls, intptr_t mid, const intptr_t *a) { (void)env; (void)cls; return core_call(0, RETOBJ, o, mid, a[0], a[1], a[2]); }
+  static intptr_t PFX##_a(void *env, intptr_t o, intptr_t cls, intptr_t mid, const intptr_t *a) { static const intptr_t z[3] = {0, 0, 0}; if (!a) a = z; (void)env; (void)cls; return core_call(0, RETOBJ, o, mid, a[0], a[1], a[2]); }
 MK_CALLNV(cn_o, 1) MK_CALLNV(cn_z, 0)
 
 static intptr_t core_new(intptr_t cls, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) {
@@ -109,7 +109,7 @@ static intptr_t f_NewObject(void *env, intptr_t cls, intptr_t mid, intptr_t a0, 
 static intptr_t f_NewObjectV(void *env, intptr_t cls, intptr_t mid, va_list ap) {
   (void)env; intptr_t a0 = va_arg(ap, intptr_t), a1 = va_arg(ap, intptr_t), a2 = va_arg(ap, intptr_t); return core_new(cls, mid, a0, a1, a2);
 }
-static intptr_t f_NewObjectA(void *env, intptr_t cls, intptr_t mid, const intptr_t *a) { (void)env; return core_new(cls, mid, a[0], a[1], a[2]); }
+static intptr_t f_NewObjectA(void *env, intptr_t cls, intptr_t mid, const intptr_t *a) { static const intptr_t z[3] = {0, 0, 0}; if (!a) a = z; (void)env; return core_new(cls, mid, a[0], a[1], a[2]); }
 static intptr_t f_GetObjectField(void *env, intptr_t o, intptr_t fid) {
   (void)env; intptr_t h = new_handle("fld", hn(fid));
   debugPrintf("[jni] GetObjectField(%s, %s) -> %#lx\n", hn(o), hn(fid), (long)h); return h;
