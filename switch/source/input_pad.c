@@ -138,7 +138,13 @@ static volatile int g_menu_open;     /* the in-game (pause) menu is assumed open
                                       * and the game's own "[Perf] ... N ticks a frame" corrects it */
 void input_pad_on_log(const char *msg) {
   if (!msg) return;
-  if (!strncmp(msg, "[Session] enter", 15)) { g_gameplay = 1; g_menu_open = 0; g_force = 0; debugPrintf("[pad] session started -> gamepad mode\n"); return; }
+  if (!strncmp(msg, "[Session] enter", 15)) {
+    /* a mission was entered; the briefing / start menu that follows the loading is assumed open
+     * (pointer on) until the game's [Perf] line shows the simulation running */
+    g_gameplay = 1; g_menu_open = 1; g_force = 0;
+    debugPrintf("[pad] session started -> gamepad inside the mission, pointer up for the start menu\n");
+    return;
+  }
   /* the simulation stops while the menu is open: ticks a frame ~ 0 */
   const char *t = strstr(msg, "ticks a frame");
   if (t && !strncmp(msg, "[Perf]", 6) && g_gameplay) {
@@ -296,30 +302,46 @@ static void refresh(void) {
   if (!menu && gyro_cfg.enabled) {
     float tdps, pdps;
     gyro_nx_sample(now, &tdps, &pdps);
-    if (gyro_cfg.mode == 0) {
-      gdx = tdps / gyro_cfg.yaw_full; gdy = pdps / gyro_cfg.pitch_full;     /* added to the stick */
+    if (gyro_cfg.mode != 2) {
+      gdx = tdps / gyro_cfg.yaw_full; gdy = pdps / gyro_cfg.pitch_full;     /* the rate as a share of a full stick */
+      if (gyro_cfg.mode == 1) {
+        /* the pad's look may square the stick (small deflections give almost nothing):
+         * pre-distort so that the engine's own curve brings the wanted rate back */
+        float ix_ = 1.0f / gyro_cfg.curve;
+        gdx = (gdx < 0 ? -1.0f : 1.0f) * powf(fabsf(gdx) > 1.0f ? 1.0f : fabsf(gdx), ix_);
+        gdy = (gdy < 0 ? -1.0f : 1.0f) * powf(fabsf(gdy) > 1.0f ? 1.0f : fabsf(gdy), ix_);
+      }
     } else {
       /* mouse mode: the rate becomes relative mouse motion at the engine's own mouse scale
-       * (0.176 deg per pixel), whole pixels per event, the remainder carried over */
-      static float ax_acc, ay_acc;
+       * (0.176 deg per pixel), whole pixels per event, the remainder carried over. The
+       * absolute position moves with it (and wraps), in case the engine differences x/y
+       * instead of reading xrel/yrel. */
+      static float ax_acc, ay_acc, gmx = 640.0f, gmy = 360.0f;
       ax_acc += tdps * dt / gyro_cfg.mouse_deg_per_px;
       ay_acc += pdps * dt / gyro_cfg.mouse_deg_per_px;
       int ix = (int)ax_acc, iy = (int)ay_acc;
       if (ix || iy) {
         ax_acc -= (float)ix; ay_acc -= (float)iy;
+        gmx += (float)ix; gmy += (float)iy;
+        while (gmx < 0) gmx += g_win_w; while (gmx >= g_win_w) gmx -= g_win_w;
+        while (gmy < 0) gmy += g_win_h; while (gmy >= g_win_h) gmy -= g_win_h;
         if (!wid) wid = window_id();
         SDL_zero(e); e.type = SDL_EVENT_MOUSE_MOTION; e.motion.timestamp = SDL_GetTicksNS(); e.motion.windowID = wid;
-        e.motion.which = 1; e.motion.x = g_px; e.motion.y = g_py; e.motion.xrel = (float)ix; e.motion.yrel = (float)iy;
+        e.motion.which = 1; e.motion.x = gmx; e.motion.y = gmy; e.motion.xrel = (float)ix; e.motion.yrel = (float)iy;
         push(&e);
       }
     }
   }
   float tx = rvx + gdx, ty = rvy + gdy, tm = sqrtf(tx * tx + ty * ty);
   if (tm > 1.0f) { tx /= tm; ty /= tm; }
-  g_ax[0] = menu ? 0 : lx; g_ax[1] = menu ? 0 : ly;
-  g_ax[2] = menu ? 0 : clampv((int)(tx * 32767.0f)); g_ax[3] = menu ? 0 : clampv((int)(ty * 32767.0f));
+  /* Inside a mission the sticks keep reaching the game even while the pointer is up: the
+   * "menu open" guess (Start / the briefing after loading) can be stale, and a real pause
+   * menu ignores them. Before a mission (title menus) they only move the pointer. */
+  int pass = !menu || g_gameplay;
+  g_ax[0] = pass ? lx : 0; g_ax[1] = pass ? ly : 0;
+  g_ax[2] = pass ? clampv((int)(tx * 32767.0f)) : 0; g_ax[3] = pass ? clampv((int)(ty * 32767.0f)) : 0;
   g_ax[4] = (held & HidNpadButton_ZL) ? 32767 : 0;
-  g_ax[5] = (!menu && (held & HidNpadButton_ZR)) ? 32767 : 0;     /* ZR = fire (engine: RT); in menus it is the mouse click */
+  g_ax[5] = (pass && (held & HidNpadButton_ZR)) ? 32767 : 0;     /* ZR = fire (engine: RT); with the pointer up it is also the mouse click */
 
   /* ---- buttons ---- */
   for (int i = 0; i < NMAP; i++) {

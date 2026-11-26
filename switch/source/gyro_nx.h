@@ -6,6 +6,7 @@
 typedef struct {
   int enabled, debug, drift;
   int mode;                          /* 0: added to the right stick, 1: relative mouse motion */
+  float curve;                       /* mode 1: exponent the pad look is assumed to apply (2 = squared) */
   float mouse_deg_per_px;            /* the engine's mouse look, docs/game-logic/player-movement.md: 0.176 */
   float yaw, pitch, roll;            /* multipliers, 1.0 = 1:1 */
   float yaw_full, pitch_full;        /* deg/s at a fully pushed right stick */

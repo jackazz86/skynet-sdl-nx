@@ -17,10 +17,10 @@
 
 #define FIFO 17
 #define CFG_PATH "/switch/skynet_sdl_nx/gyro.cfg"
-#define CFG_MARK "# gyro v2"
+#define CFG_MARK "# gyro v3"
 
 gyro_cfg_t gyro_cfg = {
-  .enabled = 1, .debug = 0, .drift = 0, .mode = 1, .mouse_deg_per_px = 0.176f,
+  .enabled = 1, .debug = 1, .drift = 0, .mode = 1, .mouse_deg_per_px = 0.176f, .curve = 2.0f,
   .yaw = 1.0f, .pitch = 1.0f, .roll = 1.0f,
   .yaw_full = 315.0f, .pitch_full = 180.0f,
   .deadzone = 0.0f, .smooth_ms = 10.0f, .stick_deadzone = 0.15f,
@@ -43,8 +43,9 @@ void gyro_nx_save_cfg(void) {
     "# yaw_full / pitch_full: the game's turn and look rates at a fully pushed right stick (deg/s).\n"
     "# deadzone: deg/s below which the sensor is ignored; smooth_ms: averaging time of the readings.\n"
     "# stick_deadzone: the right stick's dead zone, now applied by the port (the game's own is set to 0).\n"
-    "enabled %d\nmode %d\nmouse_deg_per_px %.3f\nyaw %.2f\npitch %.2f\nroll %.2f\nyaw_full %.0f\npitch_full %.0f\ndeadzone %.2f\nsmooth_ms %.0f\ndrift %d\ndebug %d\nstick_deadzone %.2f\n",
-    CFG_MARK, gyro_cfg.enabled, gyro_cfg.mode, gyro_cfg.mouse_deg_per_px, gyro_cfg.yaw, gyro_cfg.pitch, gyro_cfg.roll, gyro_cfg.yaw_full, gyro_cfg.pitch_full,
+    "# mode: 0 linear stick, 1 stick with the response curve compensated (curve = exponent), 2 relative mouse motion.\n"
+    "enabled %d\nmode %d\ncurve %.2f\nmouse_deg_per_px %.3f\nyaw %.2f\npitch %.2f\nroll %.2f\nyaw_full %.0f\npitch_full %.0f\ndeadzone %.2f\nsmooth_ms %.0f\ndrift %d\ndebug %d\nstick_deadzone %.2f\n",
+    CFG_MARK, gyro_cfg.enabled, gyro_cfg.mode, gyro_cfg.curve, gyro_cfg.mouse_deg_per_px, gyro_cfg.yaw, gyro_cfg.pitch, gyro_cfg.roll, gyro_cfg.yaw_full, gyro_cfg.pitch_full,
     gyro_cfg.deadzone, gyro_cfg.smooth_ms, gyro_cfg.drift, gyro_cfg.debug, gyro_cfg.stick_deadzone);
   fclose(f);
 }
@@ -65,6 +66,7 @@ void gyro_nx_load_cfg(void) {
     if (line[0] == '#' || sscanf(line, "%39s %f", key, &v) != 2) continue;
     if (!strcmp(key, "enabled")) gyro_cfg.enabled = (int)v;
     else if (!strcmp(key, "mode")) gyro_cfg.mode = (int)v;
+    else if (!strcmp(key, "curve")) gyro_cfg.curve = v < 1.0f ? 1.0f : v;
     else if (!strcmp(key, "mouse_deg_per_px")) gyro_cfg.mouse_deg_per_px = v;
     else if (!strcmp(key, "debug")) gyro_cfg.debug = (int)v;
     else if (!strcmp(key, "drift")) gyro_cfg.drift = (int)v;
@@ -169,13 +171,18 @@ void gyro_nx_sample(u64 now, float *turn_dps, float *pitch_dps) {
   *pitch_dps = -s_ema_pitch * 57.29578f;
 }
 
+/* Modes (cycled by L+R+ZL+ZR): 1 = stick with the response curve compensated (the pad's
+ * look may be squared), 2 = relative mouse motion, off, 0 = plain linear stick. */
 void gyro_nx_toggle(void) {
-  /* stick -> mouse -> off -> stick */
   if (!gyro_cfg.enabled) { gyro_cfg.enabled = 1; gyro_cfg.mode = 0; }
+  else if (gyro_cfg.mode == 1) gyro_cfg.mode = 2;
+  else if (gyro_cfg.mode == 2) gyro_cfg.enabled = 0;
   else if (gyro_cfg.mode == 0) gyro_cfg.mode = 1;
-  else gyro_cfg.enabled = 0;
   s_ema_turn = s_ema_pitch = 0.0f;
-  debugPrintf("[gyro] %s\n", !gyro_cfg.enabled ? "off" : gyro_cfg.mode == 0 ? "on, added to the right stick" : "on, as relative mouse motion");
+  debugPrintf("[gyro] %s\n", !gyro_cfg.enabled ? "OFF"
+              : gyro_cfg.mode == 0 ? "mode 0: linear, added to the right stick"
+              : gyro_cfg.mode == 1 ? "mode 1: added to the right stick, curve compensated"
+              : "mode 2: relative mouse motion");
   gyro_nx_save_cfg();
 }
 
