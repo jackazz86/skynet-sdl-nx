@@ -4,8 +4,8 @@ $(error "Set DEVKITPRO")
 endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
-TARGET   := skynet_nx
-APP_TITLE:= SkyNET
+TARGET   := skynet_sdl_nx
+APP_TITLE:= SkyNET SDL
 APP_AUTHOR:= skynet-sdl-nx (unofficial)
 APP_VERSION:= 0.0.1
 BUILD    := build
