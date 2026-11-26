@@ -17,10 +17,10 @@
 
 #define FIFO 17
 #define CFG_PATH "/switch/skynet_sdl_nx/gyro.cfg"
-#define CFG_MARK "# gyro v3"
+#define CFG_MARK "# gyro v4"
 
 gyro_cfg_t gyro_cfg = {
-  .enabled = 1, .debug = 1, .drift = 0, .mode = 1, .mouse_deg_per_px = 0.176f, .curve = 2.0f,
+  .enabled = 1, .debug = 0, .drift = 0, .mode = 2, .mouse_deg_per_px = 0.176f, .curve = 2.0f,
   .yaw = 1.0f, .pitch = 1.0f, .roll = 1.0f,
   .yaw_full = 315.0f, .pitch_full = 180.0f,
   .deadzone = 0.0f, .smooth_ms = 10.0f, .stick_deadzone = 0.15f,
