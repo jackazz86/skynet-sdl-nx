@@ -131,7 +131,9 @@ int main(int argc, char **argv) {
      * (nwindowSetDimensions fails with 0xf59 otherwise). Log goes on to the SD file. */
     debugPrintf("== releasing the text console for SDL ==\n");
     debugFlush();
+    util_console_active(0);
     consoleExit(NULL);
+    consoleDebugInit(debugDevice_NULL);
     pthread_attr_t at; pthread_attr_init(&at);
     pthread_attr_setstacksize(&at, 16u << 20);
     pthread_t th;
@@ -140,6 +142,7 @@ int main(int argc, char **argv) {
     while (appletMainLoop() && !g_sdl_done) svcSleepThread(50000000ULL);
     /* the game released the window (or died): bring the text console back */
     consoleInit(NULL);
+    util_console_active(1);
     debugPrintf("== game ended; log is on the SD; press + to quit ==\n");
   }
 

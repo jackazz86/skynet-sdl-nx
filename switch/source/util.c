@@ -8,17 +8,19 @@
 #include "error.h"
 
 static FILE *g_log;
+static volatile int g_console_on = 1;
+void util_console_active(int on) { g_console_on = on; }
 
 void util_log_open(void) { g_log = fopen(LOG_PATH, "w"); }
-void debugFlush(void) { if (g_log) fflush(g_log); fflush(stdout); }
+void debugFlush(void) { if (g_log) fflush(g_log); if (g_console_on) fflush(stdout); }
 
 int debugPrintf(const char *fmt, ...) {
-  char buf[1024];
+  char buf[2048];
   va_list va;
   va_start(va, fmt);
   int n = vsnprintf(buf, sizeof buf, fmt, va);
   va_end(va);
-  fputs(buf, stdout);
+  if (g_console_on) fputs(buf, stdout);
   if (g_log) { fputs(buf, g_log); fflush(g_log); }
   return n;
 }
