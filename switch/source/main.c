@@ -127,12 +127,20 @@ int main(int argc, char **argv) {
   if (e_main) {
     g_sdl_main = e_main;
     setenv("SKYNET_DATA", "/switch/skynet_sdl_nx/GAMEDATA", 1);
+    /* libnx's console owns the default NWindow; SDL needs it for its own window
+     * (nwindowSetDimensions fails with 0xf59 otherwise). Log goes on to the SD file. */
+    debugPrintf("== releasing the text console for SDL ==\n");
+    debugFlush();
+    consoleExit(NULL);
     pthread_attr_t at; pthread_attr_init(&at);
     pthread_attr_setstacksize(&at, 16u << 20);
     pthread_t th;
     int prc = pthread_create(&th, &at, sdl_main_thread, NULL);
     debugPrintf("== SDL_main thread started rc=%d ==\n", prc);
     while (appletMainLoop() && !g_sdl_done) svcSleepThread(50000000ULL);
+    /* the game released the window (or died): bring the text console back */
+    consoleInit(NULL);
+    debugPrintf("== game ended; log is on the SD; press + to quit ==\n");
   }
 
 done:
