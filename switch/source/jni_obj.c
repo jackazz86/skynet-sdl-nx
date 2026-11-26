@@ -121,7 +121,7 @@ intptr_t jobj_call(int is_static, const char *cname, intptr_t recv, const char *
       if (strstr(cname, "java/security/MessageDigest")) {
         inf = info_for(jstr(a0), &hm);
         if (!inf) { debugPrintf("[jni] MessageDigest.getInstance(%s): unsupported\n", jstr(a0)); return 0; }
-        debugPrintf("[jni] MessageDigest.getInstance(%s)\n", jstr(a0));
+        { static int n; if (n++ < 3) debugPrintf("[jni] MessageDigest.getInstance(%s)\n", jstr(a0)); }
         return (intptr_t)new_md(K_MD, inf, 0);
       }
       if (strstr(cname, "javax/crypto/Mac")) {

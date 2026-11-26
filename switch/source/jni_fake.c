@@ -83,9 +83,9 @@ static intptr_t core_call(int is_static, int ret_obj, intptr_t recv, intptr_t mi
   if (handled) return r;
   if (ret_obj) {
     intptr_t h = new_handle("ret", hn(mid));
-    debugPrintf("[jni] Call*Object %s on %s -> %#lx\n", hn(mid), hn(recv), (long)h); return h;
+    { static int n; if (n++ < 300) debugPrintf("[jni] Call*Object %s on %s -> %#lx\n", hn(mid), hn(recv), (long)h); } return h;
   }
-  debugPrintf("[jni] Call* %s on %s -> 0\n", hn(mid), hn(recv)); return 0;
+  { static int n; if (n++ < 300) debugPrintf("[jni] Call* %s on %s -> 0\n", hn(mid), hn(recv)); } return 0;
 }
 #define MK_CALL(PFX, STATIC, RETOBJ) \
   static intptr_t PFX##_p(void *env, intptr_t o, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) { (void)env; return core_call(STATIC, RETOBJ, o, mid, a0, a1, a2); } \
