@@ -23,6 +23,7 @@ LIBS     := -L$(MESA)/lib -L$(NXSDL3)/lib -pthread -Wl,--wrap=pthread_create -Wl
 LIBDIRS  := $(PORTLIBS) $(LIBNX)
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT := $(CURDIR)/$(TARGET)
+export APP_ICON := $(CURDIR)/icon.jpg
 export VPATH  := $(foreach d,$(SOURCES),$(CURDIR)/$(d))
 export DEPSDIR:= $(CURDIR)/$(BUILD)
 CFILES   := $(foreach d,$(SOURCES),$(notdir $(wildcard $(d)/*.c)))
