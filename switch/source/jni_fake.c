@@ -62,8 +62,40 @@ static intptr_t f_Nop(void *env, intptr_t o) { (void)env; (void)o; return 0; }
 static intptr_t f_Zero(void) { return 0; }
 static intptr_t f_GetObjectClass(void *env, intptr_t o) { (void)env; return new_handle("class-of", hn(o)); }
 static intptr_t f_NewStringUTF(void *env, const char *s) { (void)env; return (intptr_t)strdup(s ? s : ""); }
-static intptr_t f_GetStringUTFChars(void *env, const char *s, uint8_t *copy) { (void)env; if (copy) *copy = 0; return (intptr_t)s; }
-static intptr_t f_GetStringUTFLength(void *env, const char *s) { (void)env; return (intptr_t)strlen(s); }
+static int is_handle(intptr_t h) { return h >= 0x10000 && h < 0x10000 + MAX_H * 8; }
+static intptr_t f_GetStringUTFChars(void *env, const char *s, uint8_t *copy) {
+  (void)env; if (copy) *copy = 0;
+  return (intptr_t)(is_handle((intptr_t)s) ? "" : s);
+}
+static intptr_t f_GetStringUTFLength(void *env, const char *s) { (void)env; return is_handle((intptr_t)s) ? 0 : (intptr_t)strlen(s); }
+
+/* Method calls: log, and return a fresh non-null object for Object-returning
+ * methods (the runtime mostly just needs "not null"), 0 for everything else. */
+static intptr_t call_obj(void *env, intptr_t o, intptr_t mid) {
+  (void)env; (void)o; intptr_t h = new_handle("ret", hn(mid));
+  debugPrintf("[jni] Call*Object %s on %s -> %#lx\n", hn(mid), hn(o), (long)h); return h;
+}
+static intptr_t call_zero(void *env, intptr_t o, intptr_t mid) {
+  (void)env; debugPrintf("[jni] Call* %s on %s -> 0\n", hn(mid), hn(o)); return 0;
+}
+static intptr_t callnv_obj(void *env, intptr_t o, intptr_t cls, intptr_t mid) { (void)cls; return call_obj(env, o, mid); }
+static intptr_t callnv_zero(void *env, intptr_t o, intptr_t cls, intptr_t mid) { (void)cls; return call_zero(env, o, mid); }
+static intptr_t f_NewObject(void *env, intptr_t cls, intptr_t mid) {
+  (void)env; intptr_t h = new_handle("obj", hn(cls));
+  debugPrintf("[jni] NewObject(%s, %s) -> %#lx\n", hn(cls), hn(mid), (long)h); return h;
+}
+static intptr_t f_GetObjectField(void *env, intptr_t o, intptr_t fid) {
+  (void)env; intptr_t h = new_handle("fld", hn(fid));
+  debugPrintf("[jni] GetObjectField(%s, %s) -> %#lx\n", hn(o), hn(fid), (long)h); return h;
+}
+static intptr_t f_GetPrimField(void *env, intptr_t o, intptr_t fid) {
+  (void)env; debugPrintf("[jni] Get<prim>Field(%s, %s) -> 0\n", hn(o), hn(fid)); return 0;
+}
+static intptr_t f_IsSameObject(void *env, intptr_t a, intptr_t b) { (void)env; return a == b; }
+static intptr_t f_NewObjectArray(void *env, int n, intptr_t cls, intptr_t init) {
+  (void)env; (void)init; intptr_t h = new_handle("array", hn(cls));
+  debugPrintf("[jni] NewObjectArray(%d, %s) -> %#lx\n", n, hn(cls), (long)h); return h;
+}
 static intptr_t f_RegisterNatives(void *env, intptr_t c, void **m, int n) {
   (void)env;
   debugPrintf("[jni] RegisterNatives(%s, %d)\n", hn(c), n);
@@ -107,6 +139,24 @@ void *jni_fake_vm(void) {
   set("GetObjectClass", f_GetObjectClass); set("NewStringUTF", f_NewStringUTF);
   set("GetStringUTFChars", f_GetStringUTFChars); set("ReleaseStringUTFChars", f_Nop);
   set("GetStringUTFLength", f_GetStringUTFLength); set("RegisterNatives", f_RegisterNatives);
+  {
+    static const char *const T[] = { "Object", "Boolean", "Byte", "Char", "Short", "Int", "Long", "Float", "Double", "Void" };
+    static const char *const S[] = { "", "V", "A" };
+    char nm[64];
+    for (int t = 0; t < 10; t++) for (int s = 0; s < 3; s++) {
+      int obj = (t == 0);
+      snprintf(nm, sizeof nm, "Call%sMethod%s", T[t], S[s]); set(nm, obj ? (void *)call_obj : (void *)call_zero);
+      snprintf(nm, sizeof nm, "CallStatic%sMethod%s", T[t], S[s]); set(nm, obj ? (void *)call_obj : (void *)call_zero);
+      snprintf(nm, sizeof nm, "CallNonvirtual%sMethod%s", T[t], S[s]); set(nm, obj ? (void *)callnv_obj : (void *)callnv_zero);
+    }
+    for (int t = 1; t < 9; t++) {
+      snprintf(nm, sizeof nm, "Get%sField", T[t]); set(nm, f_GetPrimField);
+      snprintf(nm, sizeof nm, "GetStatic%sField", T[t]); set(nm, f_GetPrimField);
+    }
+    set("GetObjectField", f_GetObjectField); set("GetStaticObjectField", f_GetObjectField);
+    set("NewObject", f_NewObject); set("NewObjectV", f_NewObject); set("NewObjectA", f_NewObject);
+    set("IsSameObject", f_IsSameObject); set("NewObjectArray", f_NewObjectArray);
+  }
   set("ThrowNew", f_ThrowNew); set("FatalError", f_FatalError); set("GetJavaVM", f_GetJavaVM);
   memcpy(g_env_fns, jni_table, sizeof g_env_fns);
   g_vm_fns[4] = vm_Attach; g_vm_fns[5] = vm_Detach; g_vm_fns[6] = vm_GetEnv; g_vm_fns[7] = vm_Attach;
