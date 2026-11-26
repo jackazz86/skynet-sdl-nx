@@ -36,11 +36,32 @@
 /* Bionic code reads its stack-protector canary at tpidr_el0+0x28. tpidr_el0 is
  * free on Horizon (libnx uses tpidrro_el0), so every thread gets a block. */
 void shim_tls_install(void) {
+  uint64_t cur;
+  __asm__ volatile("mrs %0, tpidr_el0" : "=r"(cur));
+  if (cur) return;                 /* already installed on this thread */
   uint8_t *b = memalign(0x1000, 0x1000);
   if (!b) return;
   memset(b, 0, 0x1000);
   *(uint64_t *)(b + 0x28) = 0x0123456789ABCDEFull;
   __asm__ volatile("msr tpidr_el0, %0" : : "r"(b));
+}
+
+/* Every thread in the process (SDL's audio thread, ...) may end up running managed
+ * code via a callback, so ALL pthread_create calls are wrapped (-Wl,--wrap=pthread_create)
+ * to install the per-thread block first. */
+typedef struct { void *(*fn)(void *); void *arg; } wrapt_t;
+static void *wrap_tramp(void *p) {
+  wrapt_t t = *(wrapt_t *)p; free(p);
+  shim_tls_install();
+  return t.fn(t.arg);
+}
+int __real_pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+int __wrap_pthread_create(pthread_t *th, const pthread_attr_t *a, void *(*fn)(void *), void *arg) {
+  wrapt_t *w = malloc(sizeof *w); if (!w) return EAGAIN;
+  w->fn = fn; w->arg = arg;
+  int r = __real_pthread_create(th, a, wrap_tramp, w);
+  if (r) free(w);
+  return r;
 }
 
 /* ------------------------------------------------------------ diagnostics */
