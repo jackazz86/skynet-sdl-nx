@@ -5,6 +5,7 @@ extern void skynet_SDL_AcquireGPUSwapchainTexture(void);
 extern void skynet_SDL_CloseGamepad(void);
 extern void skynet_SDL_CreateGPUDevice(void);
 extern void skynet_SDL_CreateGPUDeviceWithProperties(void);
+extern void skynet_SDL_DrawGPUIndexedPrimitives(void);
 extern void skynet_SDL_GamepadConnected(void);
 extern void skynet_SDL_GamepadEventsEnabled(void);
 extern void skynet_SDL_GamepadHasAxis(void);
@@ -198,7 +199,6 @@ extern void SDL_DispatchGPUCompute(void);
 extern void SDL_DispatchGPUComputeIndirect(void);
 extern void SDL_DownloadFromGPUBuffer(void);
 extern void SDL_DownloadFromGPUTexture(void);
-extern void SDL_DrawGPUIndexedPrimitives(void);
 extern void SDL_DrawGPUIndexedPrimitivesIndirect(void);
 extern void SDL_DrawGPUPrimitives(void);
 extern void SDL_DrawGPUPrimitivesIndirect(void);
@@ -1224,6 +1224,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_CloseGamepad", (uintptr_t)&skynet_SDL_CloseGamepad },
   { "SDL_CreateGPUDevice", (uintptr_t)&skynet_SDL_CreateGPUDevice },
   { "SDL_CreateGPUDeviceWithProperties", (uintptr_t)&skynet_SDL_CreateGPUDeviceWithProperties },
+  { "SDL_DrawGPUIndexedPrimitives", (uintptr_t)&skynet_SDL_DrawGPUIndexedPrimitives },
   { "SDL_GamepadConnected", (uintptr_t)&skynet_SDL_GamepadConnected },
   { "SDL_GamepadEventsEnabled", (uintptr_t)&skynet_SDL_GamepadEventsEnabled },
   { "SDL_GamepadHasAxis", (uintptr_t)&skynet_SDL_GamepadHasAxis },
@@ -1417,7 +1418,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_DispatchGPUComputeIndirect", (uintptr_t)&SDL_DispatchGPUComputeIndirect },
   { "SDL_DownloadFromGPUBuffer", (uintptr_t)&SDL_DownloadFromGPUBuffer },
   { "SDL_DownloadFromGPUTexture", (uintptr_t)&SDL_DownloadFromGPUTexture },
-  { "SDL_DrawGPUIndexedPrimitives", (uintptr_t)&SDL_DrawGPUIndexedPrimitives },
   { "SDL_DrawGPUIndexedPrimitivesIndirect", (uintptr_t)&SDL_DrawGPUIndexedPrimitivesIndirect },
   { "SDL_DrawGPUPrimitives", (uintptr_t)&SDL_DrawGPUPrimitives },
   { "SDL_DrawGPUPrimitivesIndirect", (uintptr_t)&SDL_DrawGPUPrimitivesIndirect },

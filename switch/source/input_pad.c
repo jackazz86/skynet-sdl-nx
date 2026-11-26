@@ -135,15 +135,18 @@ static SDL_WindowID window_id(void) {
  * play. L3+R3 together flips it by hand (g_force). */
 static volatile int g_gameplay;
 static volatile int g_paused_confirmed;   /* the game's [Perf] line said the simulation is stopped */
+static volatile int g_start_toggled;      /* the menu was opened by Start (pause menu: the 3D scene stays behind it) */
+static u64 g_last_click_tick;             /* last A / ZR press while the pointer was up */
+static volatile unsigned g_idx_draws, g_last_frame_idx;   /* indexed draw calls = the 3D world, per frame */
 static volatile int g_menu_open;     /* the in-game (pause) menu is assumed open: Start toggles it,
                                       * and the game's own "[Perf] ... N ticks a frame" corrects it */
 void input_pad_on_log(const char *msg) {
   if (!msg) return;
   if (!strncmp(msg, "[Session] enter", 15)) {
-    /* a mission was entered: straight into play (there is no start menu: assuming one left the
-     * pointer on screen and the right stick scrolling = changing weapons for the first seconds) */
-    g_gameplay = 1; g_menu_open = 0; g_paused_confirmed = 0; g_force = 0;
-    debugPrintf("[pad] session started -> gamepad mode, pointer off\n");
+    /* a mission was entered: the mission screen (BEGIN / BRIEFING / TACTICAL / STATISTICS) comes
+     * up over it, so the pointer is on until BEGIN: the first 3D frames after a click close it */
+    g_gameplay = 1; g_menu_open = 1; g_start_toggled = 0; g_paused_confirmed = 0; g_force = 0;
+    debugPrintf("[pad] session started -> pointer up for the mission screen until BEGIN\n");
     return;
   }
   /* the simulation stops while the menu is open: ticks a frame ~ 0 */
@@ -214,8 +217,16 @@ static void refresh(void) {
 
   /* Start in play opens/closes the in-game menu (the game's Menu action) */
   if (g_gameplay && !g_force && (held & HidNpadButton_Plus) && !(g_prev_held & HidNpadButton_Plus) && !kb_blocking(now)) {
-    g_menu_open = !g_menu_open; menu = menu_mode();
+    g_menu_open = !g_menu_open; g_start_toggled = g_menu_open; menu = menu_mode();
     debugPrintf("[pad] Start: in-game menu assumed %s\n", g_menu_open ? "open (pointer)" : "closed (gamepad)");
+  }
+  /* BEGIN: the mission screen draws no 3D world; the first 3D frames after a click mean the
+   * game started, so the pointer goes away at once instead of waiting for the next [Perf] line.
+   * (A pause menu opened with Start keeps the world behind it and is exempt.) */
+  if (g_gameplay && g_menu_open && !g_start_toggled && !g_paused_confirmed && g_last_frame_idx >= 5 &&
+      g_last_click_tick && now - g_last_click_tick < 4 * armGetSystemTickFreq()) {
+    g_menu_open = 0; menu = menu_mode();
+    debugPrintf("[pad] %u 3D draws a frame after a click -> mission started, pointer off\n", g_last_frame_idx);
   }
   /* Y on a text screen opens the system keyboard on demand */
   if (g_text_wanted && !g_kb_shown && menu && (held & HidNpadButton_Y) && !(g_prev_held & HidNpadButton_Y)) {
@@ -350,6 +361,7 @@ static void refresh(void) {
   for (int i = 0; i < NMAP; i++) {
     int now_down = pressed(held, i), was = pressed(g_prev_held, i);
     if (now_down == was) continue;
+    if (now_down && menu && i == IDX_A) { g_last_click_tick = now; debugPrintf("[pad] A pressed in a menu (mission screen guess: %d)\n", g_menu_open); }
     /* A stays the gamepad's A (menu Accept): the engine's screens are built for it (the name
      * dialog goes NAME -> CALLSIGN -> start on A; a mouse click only puts the cursor in a field).
      * Hovering with the pointer highlights an item, so A on it works as a click. */
@@ -362,6 +374,7 @@ static void refresh(void) {
     int zr = (held & HidNpadButton_ZR) != 0, zrp = (g_prev_held & HidNpadButton_ZR) != 0;
     if (zr != zrp) {
       if (!wid) wid = window_id();
+      if (zr) { g_last_click_tick = now; debugPrintf("[pad] ZR click in a menu (mission screen guess: %d)\n", g_menu_open); }
       g_a_as_click = zr;
       g_ptr_moved_once = 1; g_active_until = now + 5 * armGetSystemTickFreq();   /* a click also shows the pointer */
       SDL_zero(e); e.type = zr ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
@@ -634,8 +647,27 @@ static void draw_cursor(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *dst, int cx, 
   }
 }
 
+/* indexed draws = the 3D world (the UI/canvas draws are not indexed): counted per presented
+ * frame; a change between "3D" and "2D" frames is logged, with the time, so that the mission
+ * screen -> play transition can be read in the log */
+void skynet_SDL_DrawGPUIndexedPrimitives(SDL_GPURenderPass *pass, Uint32 num_indices, Uint32 num_instances,
+                                         Uint32 first_index, Sint32 vertex_offset, Uint32 first_instance) {
+  g_idx_draws++;
+  SDL_DrawGPUIndexedPrimitives(pass, num_indices, num_instances, first_index, vertex_offset, first_instance);
+}
+static void note_frame_class(void) {
+  static int prev = -1;
+  g_last_frame_idx = g_idx_draws; g_idx_draws = 0;
+  int is3d = g_last_frame_idx >= 5;
+  if (is3d != prev) {
+    prev = is3d;
+    debugPrintf("[pad] frames are now %s (%u indexed draws; in session %d, pointer-mode %d)\n", is3d ? "3D" : "2D", g_last_frame_idx, g_gameplay, menu_mode());
+  }
+}
+
 bool skynet_SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer *cmd) {
   if (cmd == g_sw_cmd && g_sw_tex) {
+    note_frame_class();
     mutexLock(&g_mx);
     refresh();               /* the cursor is placed at present time, not at the last poll: smooth */
     g_st_submit++;
@@ -649,6 +681,7 @@ bool skynet_SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer *cmd) {
 }
 SDL_GPUFence *skynet_SDL_SubmitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *cmd) {
   if (cmd == g_sw_cmd && g_sw_tex) {
+    note_frame_class();
     mutexLock(&g_mx);
     refresh();               /* the cursor is placed at present time, not at the last poll: smooth */
     g_st_submit++;

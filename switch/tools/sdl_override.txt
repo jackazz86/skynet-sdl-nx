@@ -2,6 +2,7 @@ SDL_AcquireGPUSwapchainTexture
 SDL_CloseGamepad
 SDL_CreateGPUDevice
 SDL_CreateGPUDeviceWithProperties
+SDL_DrawGPUIndexedPrimitives
 SDL_GamepadConnected
 SDL_GamepadEventsEnabled
 SDL_GamepadHasAxis
