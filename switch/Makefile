@@ -24,6 +24,7 @@ LIBDIRS  := $(PORTLIBS) $(LIBNX)
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT := $(CURDIR)/$(TARGET)
 export APP_ICON := $(CURDIR)/icon.jpg
+export NROFLAGS += --icon=$(APP_ICON) --nacp=$(CURDIR)/$(TARGET).nacp
 export VPATH  := $(foreach d,$(SOURCES),$(CURDIR)/$(d))
 export DEPSDIR:= $(CURDIR)/$(BUILD)
 CFILES   := $(foreach d,$(SOURCES),$(notdir $(wildcard $(d)/*.c)))
@@ -39,7 +40,7 @@ clean:
 	rm -rf $(BUILD) $(TARGET).nro $(TARGET).elf
 else
 DEPENDS := $(OFILES:.o=.d)
-$(OUTPUT).nro: $(OUTPUT).elf
+$(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp
 $(OUTPUT).elf: $(OFILES)
 -include $(DEPENDS)
 endif

@@ -9,3 +9,4 @@ apk_x/
 build/
 *.map
 icon.jpg
+*.nacp
