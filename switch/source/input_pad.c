@@ -293,7 +293,7 @@ static void refresh(void) {
   /* ---- axes: the engine sees the sticks only in gameplay ---- */
   g_ax[0] = menu ? 0 : lx; g_ax[1] = menu ? 0 : ly; g_ax[2] = menu ? 0 : rx; g_ax[3] = menu ? 0 : ry;
   g_ax[4] = (held & HidNpadButton_ZL) ? 32767 : 0;
-  g_ax[5] = (held & HidNpadButton_ZR) ? 32767 : 0;     /* ZR = fire (engine: RT) */
+  g_ax[5] = (!menu && (held & HidNpadButton_ZR)) ? 32767 : 0;     /* ZR = fire (engine: RT); in menus it is the mouse click */
   if (!menu && gc.enabled) {
     /* gyro: added to the right stick (look); the engine's own deadzone is stepped over */
     float sx = gyro_stick(g_gx), sy = gyro_stick(g_gy);
@@ -305,23 +305,26 @@ static void refresh(void) {
   for (int i = 0; i < NMAP; i++) {
     int now_down = pressed(held, i), was = pressed(g_prev_held, i);
     if (now_down == was) continue;
-    if (i == IDX_A && (ptr_on || g_a_as_click)) {
-      /* A with the pointer showing is a mouse click (not also a menu "accept") */
-      if (now_down) g_a_as_click = 1;
-      if (!now_down || g_a_as_click) {
-        if (!wid) wid = window_id();
-        SDL_zero(e); e.type = now_down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
-        e.button.timestamp = SDL_GetTicksNS(); e.button.windowID = wid; e.button.which = 1;
-        e.button.button = SDL_BUTTON_LEFT; e.button.down = now_down; e.button.clicks = 1; e.button.x = g_px; e.button.y = g_py;
-        push(&e);
-        if (!now_down) g_a_as_click = 0;
-      }
-      continue;
-    }
+    /* A stays the gamepad's A (menu Accept): the engine's screens are built for it (the name
+     * dialog goes NAME -> CALLSIGN -> start on A; a mouse click only puts the cursor in a field).
+     * Hovering with the pointer highlights an item, so A on it works as a click. */
     SDL_zero(e); e.type = now_down ? SDL_EVENT_GAMEPAD_BUTTON_DOWN : SDL_EVENT_GAMEPAD_BUTTON_UP;
     e.gbutton.timestamp = SDL_GetTicksNS(); e.gbutton.which = 1; e.gbutton.button = (Uint8)MAP[i].button; e.gbutton.down = now_down;
     push(&e);
   }
+  /* ZR in a menu = left mouse button at the pointer (sliders, fields, anything that wants a real click) */
+  if (menu) {
+    int zr = (held & HidNpadButton_ZR) != 0, zrp = (g_prev_held & HidNpadButton_ZR) != 0;
+    if (zr != zrp) {
+      if (!wid) wid = window_id();
+      g_a_as_click = zr;
+      g_ptr_moved_once = 1; g_active_until = now + 5 * armGetSystemTickFreq();   /* a click also shows the pointer */
+      SDL_zero(e); e.type = zr ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+      e.button.timestamp = SDL_GetTicksNS(); e.button.windowID = wid; e.button.which = 1;
+      e.button.button = SDL_BUTTON_LEFT; e.button.down = zr; e.button.clicks = 1; e.button.x = g_px; e.button.y = g_py;
+      push(&e);
+    }
+  } else g_a_as_click = 0;
   g_prev_held = held;
   for (int a = 0; a < 6; a++) {
     int d = g_ax[a] - g_pax[a]; if (d < 0) d = -d;
@@ -436,7 +439,7 @@ bool skynet_SDL_GetGamepadButton(SDL_Gamepad *g, SDL_GamepadButton b) {
   (void)g;
   mutexLock(&g_mx); refresh();
   int down = 0;
-  for (int i = 0; i < NMAP; i++) if (MAP[i].button == (int)b) down = pressed(g_prev_held, i) && !(i == IDX_A && g_a_as_click);
+  for (int i = 0; i < NMAP; i++) if (MAP[i].button == (int)b) down = pressed(g_prev_held, i);
   mutexUnlock(&g_mx);
   return down != 0;
 }

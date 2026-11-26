@@ -24,6 +24,6 @@ Source of the defaults: the game's own gamepad bindings (`padBindings` in
 | L + R + ZL + ZR together | Gyro on/off |
 | Gyro (console or Pro Controller) | Turns and tilts the view (added to the right stick); tune in `/switch/skynet_sdl_nx/gyro.cfg` |
 
-Menus: left stick moves a pointer (arrow), A clicks, right stick up/down scrolls. The
+Menus: left stick moves a pointer (arrow) whose hover highlights an item; A confirms the highlighted item (the engine's own Accept), ZR is a real mouse click, right stick up/down scrolls. The
 pointer is on from boot and switches to the gamepad when the game logs `[Session] enter`.
 In menus the engine also navigates natively with D-pad + A/B.
