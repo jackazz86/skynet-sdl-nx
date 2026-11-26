@@ -243,7 +243,7 @@ SH(int, libc_current_sigrtmax, (void)) { return 64; }
 /* ------------------------------------------------------- process/system */
 SH(long, sysconf, (int n)) {
   switch (n) {
-    case 39: return 4096;              /* _SC_PAGESIZE */
+    case 39: case 40: return 4096;     /* _SC_PAGESIZE, _SC_PAGE_SIZE */
     case 2: return 100;                /* _SC_CLK_TCK */
     case 4: return 1024;               /* _SC_OPEN_MAX */
     case 96: case 97: return 3;        /* _SC_NPROCESSORS_CONF/ONLN */

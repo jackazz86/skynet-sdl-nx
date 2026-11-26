@@ -91,6 +91,42 @@ static intptr_t f_GetObjectField(void *env, intptr_t o, intptr_t fid) {
 static intptr_t f_GetPrimField(void *env, intptr_t o, intptr_t fid) {
   (void)env; debugPrintf("[jni] Get<prim>Field(%s, %s) -> 0\n", hn(o), hn(fid)); return 0;
 }
+static intptr_t f_AllocObject(void *env, intptr_t cls) {
+  (void)env; intptr_t h = new_handle("obj", hn(cls));
+  debugPrintf("[jni] AllocObject(%s) -> %#lx\n", hn(cls), (long)h); return h;
+}
+/* jstring == strdup'd UTF-8 char* in this fake; UTF-16 <-> UTF-8 on the way in/out */
+static intptr_t f_NewString(void *env, const uint16_t *c, int n) {
+  (void)env; char *b = malloc((size_t)n * 3 + 1); int j = 0;
+  for (int i = 0; i < n; i++) {
+    uint32_t u = c[i];
+    if (u >= 0xD800 && u < 0xDC00 && i + 1 < n) { u = 0x10000 + ((u - 0xD800) << 10) + (c[++i] - 0xDC00); }
+    if (u < 0x80) b[j++] = (char)u;
+    else if (u < 0x800) { b[j++] = (char)(0xC0 | (u >> 6)); b[j++] = (char)(0x80 | (u & 63)); }
+    else if (u < 0x10000) { b[j++] = (char)(0xE0 | (u >> 12)); b[j++] = (char)(0x80 | ((u >> 6) & 63)); b[j++] = (char)(0x80 | (u & 63)); }
+    else { b = realloc(b, (size_t)n * 4 + 1); b[j++] = (char)(0xF0 | (u >> 18)); b[j++] = (char)(0x80 | ((u >> 12) & 63)); b[j++] = (char)(0x80 | ((u >> 6) & 63)); b[j++] = (char)(0x80 | (u & 63)); }
+  }
+  b[j] = 0; return (intptr_t)b;
+}
+static uint16_t *utf8_to_16(const char *s, int *len) {
+  size_t n = strlen(s); uint16_t *o = malloc((n + 1) * 2); int j = 0;
+  for (size_t i = 0; i < n;) {
+    uint32_t u = (unsigned char)s[i];
+    int extra = u >= 0xF0 ? 3 : u >= 0xE0 ? 2 : u >= 0xC0 ? 1 : 0;
+    u = extra == 3 ? u & 7 : extra == 2 ? u & 15 : extra == 1 ? u & 31 : u; i++;
+    while (extra-- > 0 && i < n) u = (u << 6) | ((unsigned char)s[i++] & 63);
+    if (u >= 0x10000) { u -= 0x10000; o[j++] = (uint16_t)(0xD800 + (u >> 10)); o[j++] = (uint16_t)(0xDC00 + (u & 1023)); }
+    else o[j++] = (uint16_t)u;
+  }
+  o[j] = 0; *len = j; return o;
+}
+static intptr_t f_GetStringChars(void *env, const char *s, uint8_t *copy) {
+  (void)env; if (copy) *copy = 1; int l; return (intptr_t)utf8_to_16(is_handle((intptr_t)s) ? "" : s, &l);
+}
+static intptr_t f_GetStringLength(void *env, const char *s) {
+  (void)env; if (is_handle((intptr_t)s)) return 0; int l; free(utf8_to_16(s, &l)); return l;
+}
+static intptr_t f_ReleaseStringChars(void *env, intptr_t s, void *chars) { (void)env; (void)s; free(chars); return 0; }
 static intptr_t f_GetObjectRefType(void *env, intptr_t o) { (void)env; (void)o; return 1; /* JNILocalRefType */ }
 static intptr_t f_IsSameObject(void *env, intptr_t a, intptr_t b) { (void)env; return a == b; }
 static intptr_t f_NewObjectArray(void *env, int n, intptr_t cls, intptr_t init) {
@@ -156,7 +192,9 @@ void *jni_fake_vm(void) {
     }
     set("GetObjectField", f_GetObjectField); set("GetStaticObjectField", f_GetObjectField);
     set("NewObject", f_NewObject); set("NewObjectV", f_NewObject); set("NewObjectA", f_NewObject);
-    set("GetObjectRefType", f_GetObjectRefType);
+    set("GetObjectRefType", f_GetObjectRefType); set("AllocObject", f_AllocObject);
+    set("NewString", f_NewString); set("GetStringChars", f_GetStringChars);
+    set("GetStringLength", f_GetStringLength); set("ReleaseStringChars", f_ReleaseStringChars);
     set("IsSameObject", f_IsSameObject); set("NewObjectArray", f_NewObjectArray);
   }
   set("ThrowNew", f_ThrowNew); set("FatalError", f_FatalError); set("GetJavaVM", f_GetJavaVM);
