@@ -42,6 +42,7 @@ extern void skynet_SDL_WaitAndAcquireGPUSwapchainTexture(void);
 extern void skynet_SDL_AcquireGPUSwapchainTexture(void);
 extern void skynet_SDL_SubmitGPUCommandBuffer(void);
 extern void skynet_SDL_SubmitGPUCommandBufferAndAcquireFence(void);
+extern void skynet_SDL_GetTouchDevices(void);
 extern void SDL_AcquireCameraFrame(void);
 extern void SDL_AcquireGPUCommandBuffer(void);
 extern void SDL_AddAtomicInt(void);
@@ -552,7 +553,6 @@ extern void SDL_GetTicks(void);
 extern void SDL_GetTicksNS(void);
 extern void SDL_GetTouchDeviceName(void);
 extern void SDL_GetTouchDeviceType(void);
-extern void SDL_GetTouchDevices(void);
 extern void SDL_GetTouchFingers(void);
 extern void SDL_GetTrayEntries(void);
 extern void SDL_GetTrayEntryChecked(void);
@@ -1261,6 +1261,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_AcquireGPUSwapchainTexture", (uintptr_t)&skynet_SDL_AcquireGPUSwapchainTexture },
   { "SDL_SubmitGPUCommandBuffer", (uintptr_t)&skynet_SDL_SubmitGPUCommandBuffer },
   { "SDL_SubmitGPUCommandBufferAndAcquireFence", (uintptr_t)&skynet_SDL_SubmitGPUCommandBufferAndAcquireFence },
+  { "SDL_GetTouchDevices", (uintptr_t)&skynet_SDL_GetTouchDevices },
   { "SDL_AcquireCameraFrame", (uintptr_t)&SDL_AcquireCameraFrame },
   { "SDL_AcquireGPUCommandBuffer", (uintptr_t)&SDL_AcquireGPUCommandBuffer },
   { "SDL_AddAtomicInt", (uintptr_t)&SDL_AddAtomicInt },
@@ -1771,7 +1772,6 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_GetTicksNS", (uintptr_t)&SDL_GetTicksNS },
   { "SDL_GetTouchDeviceName", (uintptr_t)&SDL_GetTouchDeviceName },
   { "SDL_GetTouchDeviceType", (uintptr_t)&SDL_GetTouchDeviceType },
-  { "SDL_GetTouchDevices", (uintptr_t)&SDL_GetTouchDevices },
   { "SDL_GetTouchFingers", (uintptr_t)&SDL_GetTouchFingers },
   { "SDL_GetTrayEntries", (uintptr_t)&SDL_GetTrayEntries },
   { "SDL_GetTrayEntryChecked", (uintptr_t)&SDL_GetTrayEntryChecked },

@@ -39,3 +39,4 @@ SDL_WaitAndAcquireGPUSwapchainTexture
 SDL_AcquireGPUSwapchainTexture
 SDL_SubmitGPUCommandBuffer
 SDL_SubmitGPUCommandBufferAndAcquireFence
+SDL_GetTouchDevices

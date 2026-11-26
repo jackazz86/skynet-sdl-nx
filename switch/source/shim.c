@@ -65,8 +65,10 @@ int __wrap_pthread_create(pthread_t *th, const pthread_attr_t *a, void *(*fn)(vo
 }
 
 /* ------------------------------------------------------------ diagnostics */
+extern void input_pad_on_log(const char *msg);
 SH(int, android_log_write, (int prio, const char *tag, const char *msg)) {
   debugPrintf("[log %d] %s: %s\n", prio, tag ? tag : "", msg ? msg : "");
+  input_pad_on_log(msg);     /* the game's own "[Session] enter MAP.nnn" switches pointer -> gamepad */
   return 0;
 }
 SH(int, android_log_print, (int prio, const char *tag, const char *fmt, ...)) {

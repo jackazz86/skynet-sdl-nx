@@ -60,7 +60,8 @@ static const struct { u64 mask; int button; } MAP[] = {
   { HidNpadButton_StickL, SDL_GAMEPAD_BUTTON_LEFT_STICK },
   { HidNpadButton_StickR, SDL_GAMEPAD_BUTTON_RIGHT_STICK },
   { HidNpadButton_L, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER },
-  { HidNpadButton_R, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER },
+  /* R is not a button here: like ZR it drives the right trigger axis = FIRE (the engine's
+   * default "Fire: RT"; its "Next weapon: Y, RB" stays on X and Y) */
   { HidNpadButton_Up, SDL_GAMEPAD_BUTTON_DPAD_UP },
   { HidNpadButton_Down, SDL_GAMEPAD_BUTTON_DPAD_DOWN },
   { HidNpadButton_Left, SDL_GAMEPAD_BUTTON_DPAD_LEFT },
@@ -83,15 +84,25 @@ static void push(const SDL_Event *e) {
 }
 static int pressed(u64 held, int i) { return (held & MAP[i].mask) != 0; }
 static SDL_WindowID window_id(void) {
+  static SDL_WindowID cached;       /* SDL_GetWindows takes SDL's video lock: ask once */
+  if (cached) return cached;
   int n = 0; SDL_Window **w = SDL_GetWindows(&n);
-  SDL_WindowID id = (w && n > 0) ? SDL_GetWindowID(w[0]) : 0;
+  if (w && n > 0) cached = SDL_GetWindowID(w[0]);
   SDL_free(w);
-  return id;
+  return cached;
+}
+/* Menu (pointer) vs play (gamepad). The engine never touches relative mouse mode or the
+ * cursor on this build, so the signal is the game's own log: "[Session] enter MAP.nnn" =
+ * play. L3+R3 together flips it by hand (g_force). */
+static volatile int g_gameplay;
+void input_pad_on_log(const char *msg) {
+  if (msg && !strncmp(msg, "[Session] enter", 15)) { g_gameplay = 1; g_force = 0; debugPrintf("[pad] session started -> gamepad mode\n"); }
 }
 static int menu_mode(void) {
   if (g_force == 1) return 0;
   if (g_force == 2) return 1;
-  return !g_relative && !g_cursor_hidden;
+  if (g_relative || g_cursor_hidden) return 0;
+  return !g_gameplay;
 }
 static int pointer_active(void) {
   return menu_mode() && g_ptr_moved_once && armGetSystemTick() < g_active_until;
@@ -117,12 +128,13 @@ static void refresh(void) {
     debugPrintf("[pad] mode: %s (relative=%d cursor_hidden=%d force=%d)\n", menu ? "MENU/pointer" : "GAMEPLAY/gamepad",
                 g_relative, g_cursor_hidden, g_force);
   }
-  /* L3+R3 together: cycle pointer mode auto -> off -> on */
+  /* L3+R3 together: flip pointer <-> gamepad by hand */
   {
     u64 both = HidNpadButton_StickL | HidNpadButton_StickR;
     if ((held & both) == both && (g_prev_held & both) != both) {
-      g_force = (g_force + 1) % 3;
-      debugPrintf("[pad] pointer mode forced: %s\n", g_force == 0 ? "auto" : g_force == 1 ? "off" : "on");
+      g_force = menu ? 1 : 2;
+      menu = menu_mode();
+      debugPrintf("[pad] L3+R3: now %s\n", menu ? "pointer" : "gamepad");
     }
   }
 
@@ -168,7 +180,7 @@ static void refresh(void) {
   /* ---- axes: the engine sees the sticks only in gameplay ---- */
   g_ax[0] = menu ? 0 : lx; g_ax[1] = menu ? 0 : ly; g_ax[2] = menu ? 0 : rx; g_ax[3] = menu ? 0 : ry;
   g_ax[4] = (held & HidNpadButton_ZL) ? 32767 : 0;
-  g_ax[5] = (held & HidNpadButton_ZR) ? 32767 : 0;
+  g_ax[5] = (held & (HidNpadButton_ZR | HidNpadButton_R)) ? 32767 : 0;   /* both fire */
 
   /* ---- buttons ---- */
   for (int i = 0; i < NMAP; i++) {
@@ -222,16 +234,47 @@ SDL_MouseButtonFlags skynet_SDL_GetMouseState(float *x, float *y) {
 /* ----------------------------------------------------------- SDL events */
 static int g_fake_gamepad;     /* its address is the "SDL_Gamepad *" */
 
+/* Touch is dropped before the engine sees it: the game wants physical controls only, and
+ * its on-screen touch UI (TouchControls) both shows up on the first finger and throws
+ * KeyNotFoundException in StickAt() when fingers arrive on this build. */
+static int is_touch_event(const SDL_Event *e) {
+  switch (e->type) {
+    case SDL_EVENT_FINGER_DOWN: case SDL_EVENT_FINGER_UP: case SDL_EVENT_FINGER_MOTION: case SDL_EVENT_FINGER_CANCELED:
+      return 1;
+    case SDL_EVENT_MOUSE_MOTION: return e->motion.which == SDL_TOUCH_MOUSEID;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP: return e->button.which == SDL_TOUCH_MOUSEID;
+    default: return 0;
+  }
+}
+SDL_TouchID *skynet_SDL_GetTouchDevices(int *count) { if (count) *count = 0; return NULL; }
+
+/* statistics, logged every 5 s: how often the game polls, and how often frames are submitted */
+static u64 g_st_t0; static unsigned g_st_poll, g_st_submit, g_st_maxq;
+static void stats_tick(void) {
+  u64 now = armGetSystemTick(), f = armGetSystemTickFreq();
+  if (!g_st_t0) g_st_t0 = now;
+  if (now - g_st_t0 >= 5 * f) {
+    debugPrintf("[pad] 5 s: %u polls, %u submits, max queue %u, mode %s\n", g_st_poll, g_st_submit, g_st_maxq, menu_mode() ? "pointer" : "gamepad");
+    g_st_t0 = now; g_st_poll = g_st_submit = g_st_maxq = 0;
+  }
+}
+
 bool skynet_SDL_PollEvent(SDL_Event *ev) {
+  if (!ev) return SDL_PollEvent(ev);
   mutexLock(&g_mx);
   refresh();
-  if (g_qc > 0 && ev) {
+  g_st_poll++; if ((unsigned)g_qc > g_st_maxq) g_st_maxq = (unsigned)g_qc;
+  stats_tick();
+  if (g_qc > 0) {
     *ev = g_q[g_qh]; g_qh = (g_qh + 1) % QN; g_qc--;
     mutexUnlock(&g_mx);
     return true;
   }
   mutexUnlock(&g_mx);
-  return SDL_PollEvent(ev);
+  while (SDL_PollEvent(ev)) {
+    if (!is_touch_event(ev)) return true;
+  }
+  return false;
 }
 void skynet_SDL_UpdateGamepads(void) { mutexLock(&g_mx); refresh(); mutexUnlock(&g_mx); }
 
@@ -398,6 +441,8 @@ static void draw_cursor(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *dst, int cx, 
 bool skynet_SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer *cmd) {
   if (cmd == g_sw_cmd && g_sw_tex) {
     mutexLock(&g_mx);
+    refresh();               /* the cursor is placed at present time, not at the last poll: smooth */
+    g_st_submit++;
     int on = pointer_active();
     int cx = (int)g_px, cy = (int)g_py;
     mutexUnlock(&g_mx);
@@ -409,6 +454,8 @@ bool skynet_SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer *cmd) {
 SDL_GPUFence *skynet_SDL_SubmitGPUCommandBufferAndAcquireFence(SDL_GPUCommandBuffer *cmd) {
   if (cmd == g_sw_cmd && g_sw_tex) {
     mutexLock(&g_mx);
+    refresh();               /* the cursor is placed at present time, not at the last poll: smooth */
+    g_st_submit++;
     int on = pointer_active();
     int cx = (int)g_px, cy = (int)g_py;
     mutexUnlock(&g_mx);
