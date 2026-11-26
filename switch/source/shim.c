@@ -109,7 +109,11 @@ SH(int, clock_nanosleep, (int clk, int flags, const struct timespec *r, struct t
 #define OBJ_MIN 0x10000ull
 typedef struct { uint64_t p; uint32_t extra; } lazy_t;
 
-static void *lazy_get(volatile uint64_t *slot, size_t objsz, void (*init)(void *, uint32_t), uint32_t arg) {
+/* bionic sync objects are only 4-byte aligned; LDAR/CAS need 8, so the pointer
+ * slot is the first 8-aligned doubleword inside the object. */
+static volatile uint64_t *slot_of(void *base) { return (volatile uint64_t *)(((uintptr_t)base + 7) & ~7ull); }
+static void *lazy_get(void *base, size_t objsz, void (*init)(void *, uint32_t), uint32_t arg) {
+  volatile uint64_t *slot = slot_of(base);
   uint64_t cur = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
   if (cur >= OBJ_MIN) return (void *)cur;
   void *o = calloc(1, objsz);
@@ -125,10 +129,9 @@ static void mtx_init_obj(void *o, uint32_t type) {
   pthread_mutex_init(o, &a); pthread_mutexattr_destroy(&a);
 }
 static pthread_mutex_t *mtx(void *bm) {
-  volatile uint64_t *slot = bm; uint64_t v = *slot;
   uint32_t type = 0;
-  if (v < OBJ_MIN) { uint32_t fl = (uint32_t)v & 0xC000; type = fl == 0x4000 ? 1 : 0; }
-  return lazy_get(slot, sizeof(pthread_mutex_t), mtx_init_obj, type);
+  if (*slot_of(bm) < OBJ_MIN) { uint32_t fl = *(volatile uint32_t *)bm & 0xC000; type = fl == 0x4000 ? 1 : 0; }
+  return lazy_get(bm, sizeof(pthread_mutex_t), mtx_init_obj, type);
 }
 SH(int, pthread_mutexattr_init, (int *a)) { *a = 0; return 0; }
 SH(int, pthread_mutexattr_destroy, (int *a)) { (void)a; return 0; }
@@ -149,14 +152,14 @@ SH(int, pthread_condattr_init, (int *a)) { *a = 0; return 0; }
 SH(int, pthread_condattr_destroy, (int *a)) { (void)a; return 0; }
 SH(int, pthread_condattr_setclock, (int *a, int clk)) { *a = clk; return 0; }
 SH(int, pthread_cond_init, (void *c, const int *a)) {
-  memset(c, 0, 48); cnd(c); *(uint32_t *)((char *)c + 8) = (a && *a) ? 1 : 0; return 0;
+  memset(c, 0, 48); cnd(c); *(uint32_t *)((char *)c + 40) = (a && *a) ? 1 : 0; return 0;
 }
 SH(int, pthread_cond_destroy, (void *c)) { (void)c; return 0; }
 SH(int, pthread_cond_signal, (void *c)) { return pthread_cond_signal(cnd(c)); }
 SH(int, pthread_cond_broadcast, (void *c)) { return pthread_cond_broadcast(cnd(c)); }
 SH(int, pthread_cond_wait, (void *c, void *m)) { return pthread_cond_wait(cnd(c), mtx(m)); }
 SH(int, pthread_cond_timedwait, (void *c, void *m, const struct timespec *abs)) {
-  int clk = *(uint32_t *)((char *)c + 8) ? 1 : 0;
+  int clk = *(uint32_t *)((char *)c + 40) ? 1 : 0;
   struct timespec now; shim_clock_gettime(clk, &now);
   int64_t rel = ((int64_t)abs->tv_sec - now.tv_sec) * 1000000000ll + (abs->tv_nsec - now.tv_nsec);
   if (rel < 0) rel = 0;
