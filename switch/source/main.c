@@ -23,7 +23,7 @@ static volatile int g_sdl_done;
 static void *sdl_main_thread(void *arg) {
   (void)arg;
   shim_tls_install();
-  char *argv[] = { "skynet", "--data", "/switch/skynet_sdl_nx/GAMEDATA", NULL };
+  char *argv[] = { "skynet", "/switch/skynet_sdl_nx", "/switch/skynet_sdl_nx/GAMEDATA", NULL };
   debugPrintf("== SDL_main thread: calling SDL_main ==\n");
   int rc = ((int (*)(int, char **))g_sdl_main)(3, argv);
   debugPrintf("== SDL_main returned %d ==\n", rc);
