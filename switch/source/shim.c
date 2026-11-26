@@ -219,7 +219,7 @@ SH(int, pthread_create, (uint64_t *out, const battr_t *a, void *(*fn)(void *), v
   *out = (uint64_t)th;
   return 0;
 }
-SH(int, pthread_detach, (unsigned long t)) { return pthread_detach((pthread_t)t); }
+SH(int, pthread_detach, (unsigned long t)) { (void)t; return 0; } /* newlib/libnx returns ENOSYS; thread resources are reclaimed on exit anyway */
 SH(unsigned long, pthread_self, (void)) { return (unsigned long)pthread_self(); }
 SH(int, pthread_setname_np, (unsigned long t, const char *n)) { (void)t; (void)n; return 0; }
 SH(int, pthread_kill, (unsigned long t, int s)) { (void)t; (void)s; return 0; }

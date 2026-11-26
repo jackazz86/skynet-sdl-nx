@@ -103,8 +103,8 @@ int main(int argc, char **argv) {
     debugPrintf("== calling JavaInteropRuntime_init ==\n");
     void (*init)(void *, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t) = (void *)e_init;
     init(jni_fake_env(), jni_fake_handle("class", "net/dot/jni/nativeaot/JavaInteropRuntime"),
-         jni_fake_handle("obj", "ClassLoader"), jni_fake_handle("obj", "arg3"),
-         jni_fake_handle("obj", "arg4"), jni_fake_handle("obj", "arg5"));
+         jni_fake_handle("obj", "ClassLoader"), (intptr_t)"/switch/skynet_sdl_nx/tmp",
+         (intptr_t)"/switch/skynet_sdl_nx/home", (intptr_t)"/switch/skynet_sdl_nx");
     debugPrintf("== JavaInteropRuntime_init returned ==\n");
   }
 
