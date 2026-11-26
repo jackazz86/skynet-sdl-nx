@@ -6,7 +6,9 @@
 #include <string.h>
 #include <stdint.h>
 #include "util.h"
+#include <stdarg.h>
 #include "jni_fake.h"
+#include "jni_obj.h"
 
 #define LOG_CAP 4000
 static int g_logged;
@@ -71,19 +73,43 @@ static intptr_t f_GetStringUTFLength(void *env, const char *s) { (void)env; retu
 
 /* Method calls: log, and return a fresh non-null object for Object-returning
  * methods (the runtime mostly just needs "not null"), 0 for everything else. */
-static intptr_t call_obj(void *env, intptr_t o, intptr_t mid) {
-  (void)env; (void)o; intptr_t h = new_handle("ret", hn(mid));
-  debugPrintf("[jni] Call*Object %s on %s -> %#lx\n", hn(mid), hn(o), (long)h); return h;
+static const char *after_colon(const char *s) { const char *c = strchr(s, ':'); return c ? c + 1 : s; }
+
+/* core of every Call*Method: native-backed classes first (jni_obj.c), else log + dummy */
+static intptr_t core_call(int is_static, int ret_obj, intptr_t recv, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) {
+  const char *mname = after_colon(hn(mid));
+  int handled = 0;
+  intptr_t r = jobj_call(is_static, is_static ? after_colon(hn(recv)) : NULL, recv, mname, a0, a1, a2, &handled);
+  if (handled) return r;
+  if (ret_obj) {
+    intptr_t h = new_handle("ret", hn(mid));
+    debugPrintf("[jni] Call*Object %s on %s -> %#lx\n", hn(mid), hn(recv), (long)h); return h;
+  }
+  debugPrintf("[jni] Call* %s on %s -> 0\n", hn(mid), hn(recv)); return 0;
 }
-static intptr_t call_zero(void *env, intptr_t o, intptr_t mid) {
-  (void)env; debugPrintf("[jni] Call* %s on %s -> 0\n", hn(mid), hn(o)); return 0;
-}
-static intptr_t callnv_obj(void *env, intptr_t o, intptr_t cls, intptr_t mid) { (void)cls; return call_obj(env, o, mid); }
-static intptr_t callnv_zero(void *env, intptr_t o, intptr_t cls, intptr_t mid) { (void)cls; return call_zero(env, o, mid); }
-static intptr_t f_NewObject(void *env, intptr_t cls, intptr_t mid) {
-  (void)env; intptr_t h = new_handle("obj", hn(cls));
+#define MK_CALL(PFX, STATIC, RETOBJ) \
+  static intptr_t PFX##_p(void *env, intptr_t o, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) { (void)env; return core_call(STATIC, RETOBJ, o, mid, a0, a1, a2); } \
+  static intptr_t PFX##_v(void *env, intptr_t o, intptr_t mid, va_list ap) { (void)env; intptr_t a0 = va_arg(ap, intptr_t), a1 = va_arg(ap, intptr_t), a2 = va_arg(ap, intptr_t); return core_call(STATIC, RETOBJ, o, mid, a0, a1, a2); } \
+  static intptr_t PFX##_a(void *env, intptr_t o, intptr_t mid, const intptr_t *a) { (void)env; return core_call(STATIC, RETOBJ, o, mid, a[0], a[1], a[2]); }
+MK_CALL(ci_o, 0, 1) MK_CALL(ci_z, 0, 0) MK_CALL(cs_o, 1, 1) MK_CALL(cs_z, 1, 0)
+#define MK_CALLNV(PFX, RETOBJ) \
+  static intptr_t PFX##_p(void *env, intptr_t o, intptr_t cls, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) { (void)env; (void)cls; return core_call(0, RETOBJ, o, mid, a0, a1, a2); } \
+  static intptr_t PFX##_v(void *env, intptr_t o, intptr_t cls, intptr_t mid, va_list ap) { (void)env; (void)cls; intptr_t a0 = va_arg(ap, intptr_t), a1 = va_arg(ap, intptr_t), a2 = va_arg(ap, intptr_t); return core_call(0, RETOBJ, o, mid, a0, a1, a2); } \
+  static intptr_t PFX##_a(void *env, intptr_t o, intptr_t cls, intptr_t mid, const intptr_t *a) { (void)env; (void)cls; return core_call(0, RETOBJ, o, mid, a[0], a[1], a[2]); }
+MK_CALLNV(cn_o, 1) MK_CALLNV(cn_z, 0)
+
+static intptr_t core_new(intptr_t cls, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) {
+  int handled = 0;
+  intptr_t r = jobj_new(after_colon(hn(cls)), a0, a1, a2, &handled);
+  if (handled) return r;
+  intptr_t h = new_handle("obj", hn(cls));
   debugPrintf("[jni] NewObject(%s, %s) -> %#lx\n", hn(cls), hn(mid), (long)h); return h;
 }
+static intptr_t f_NewObject(void *env, intptr_t cls, intptr_t mid, intptr_t a0, intptr_t a1, intptr_t a2) { (void)env; return core_new(cls, mid, a0, a1, a2); }
+static intptr_t f_NewObjectV(void *env, intptr_t cls, intptr_t mid, va_list ap) {
+  (void)env; intptr_t a0 = va_arg(ap, intptr_t), a1 = va_arg(ap, intptr_t), a2 = va_arg(ap, intptr_t); return core_new(cls, mid, a0, a1, a2);
+}
+static intptr_t f_NewObjectA(void *env, intptr_t cls, intptr_t mid, const intptr_t *a) { (void)env; return core_new(cls, mid, a[0], a[1], a[2]); }
 static intptr_t f_GetObjectField(void *env, intptr_t o, intptr_t fid) {
   (void)env; intptr_t h = new_handle("fld", hn(fid));
   debugPrintf("[jni] GetObjectField(%s, %s) -> %#lx\n", hn(o), hn(fid), (long)h); return h;
@@ -182,16 +208,20 @@ void *jni_fake_vm(void) {
     char nm[64];
     for (int t = 0; t < 10; t++) for (int s = 0; s < 3; s++) {
       int obj = (t == 0);
-      snprintf(nm, sizeof nm, "Call%sMethod%s", T[t], S[s]); set(nm, obj ? (void *)call_obj : (void *)call_zero);
-      snprintf(nm, sizeof nm, "CallStatic%sMethod%s", T[t], S[s]); set(nm, obj ? (void *)call_obj : (void *)call_zero);
-      snprintf(nm, sizeof nm, "CallNonvirtual%sMethod%s", T[t], S[s]); set(nm, obj ? (void *)callnv_obj : (void *)callnv_zero);
+      void *ci[3] = { obj ? (void *)ci_o_p : (void *)ci_z_p, obj ? (void *)ci_o_v : (void *)ci_z_v, obj ? (void *)ci_o_a : (void *)ci_z_a };
+      void *cs[3] = { obj ? (void *)cs_o_p : (void *)cs_z_p, obj ? (void *)cs_o_v : (void *)cs_z_v, obj ? (void *)cs_o_a : (void *)cs_z_a };
+      void *cn[3] = { obj ? (void *)cn_o_p : (void *)cn_z_p, obj ? (void *)cn_o_v : (void *)cn_z_v, obj ? (void *)cn_o_a : (void *)cn_z_a };
+      snprintf(nm, sizeof nm, "Call%sMethod%s", T[t], S[s]); set(nm, ci[s]);
+      snprintf(nm, sizeof nm, "CallStatic%sMethod%s", T[t], S[s]); set(nm, cs[s]);
+      snprintf(nm, sizeof nm, "CallNonvirtual%sMethod%s", T[t], S[s]); set(nm, cn[s]);
     }
+    jobj_register(set);
     for (int t = 1; t < 9; t++) {
       snprintf(nm, sizeof nm, "Get%sField", T[t]); set(nm, f_GetPrimField);
       snprintf(nm, sizeof nm, "GetStatic%sField", T[t]); set(nm, f_GetPrimField);
     }
     set("GetObjectField", f_GetObjectField); set("GetStaticObjectField", f_GetObjectField);
-    set("NewObject", f_NewObject); set("NewObjectV", f_NewObject); set("NewObjectA", f_NewObject);
+    set("NewObject", f_NewObject); set("NewObjectV", f_NewObjectV); set("NewObjectA", f_NewObjectA);
     set("GetObjectRefType", f_GetObjectRefType); set("AllocObject", f_AllocObject);
     set("NewString", f_NewString); set("GetStringChars", f_GetStringChars);
     set("GetStringLength", f_GetStringLength); set("ReleaseStringChars", f_ReleaseStringChars);

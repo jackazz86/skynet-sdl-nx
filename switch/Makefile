@@ -18,7 +18,7 @@ ASFLAGS  := -g $(ARCH)
 LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections -Wl,--allow-multiple-definition
 MESA     := /c/work/mesa-sdk/opt/devkitpro/portlibs/switch
 NXSDL3   := /c/work/nxsdl3
-LIBS     := -L$(MESA)/lib -L$(NXSDL3)/lib -pthread -Wl,--wrap=pthread_create -Wl,-u,vk_icdGetInstanceProcAddr -Wl,-u,vk_icdNegotiateLoaderICDInterfaceVersion -Wl,--start-group -l:libSDL3.a -l:libvulkan.a -l:libGLESv2.a -l:libEGL.a -l:libglapi.a -l:libcompiler.a -l:libmesa_util_c11.a -l:libblake3.a -l:libmesa_util.a -l:libmesa_util_simd.a -l:libxmlconfig.a -ldrm_nouveau -lexpat -lzstd -lz -lnx -lstdc++ -lm -Wl,--end-group
+LIBS     := -L$(MESA)/lib -L$(NXSDL3)/lib -pthread -Wl,--wrap=pthread_create -Wl,-u,vk_icdGetInstanceProcAddr -Wl,-u,vk_icdNegotiateLoaderICDInterfaceVersion -Wl,--start-group -l:libSDL3.a -l:libvulkan.a -l:libGLESv2.a -l:libEGL.a -l:libglapi.a -l:libcompiler.a -l:libmesa_util_c11.a -l:libblake3.a -l:libmesa_util.a -l:libmesa_util_simd.a -l:libxmlconfig.a -lmbedcrypto -ldrm_nouveau -lexpat -lzstd -lz -lnx -lstdc++ -lm -Wl,--end-group
 LIBDIRS  := $(PORTLIBS) $(LIBNX)
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT := $(CURDIR)/$(TARGET)
