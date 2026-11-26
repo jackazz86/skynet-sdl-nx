@@ -14,13 +14,18 @@
 static volatile int g_stop;
 void input_pad_stop(void) { g_stop = 1; }
 
+/* hid is set up on the main thread, before the thread starts */
+static PadState pad;
+void input_pad_init(void) {
+  padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+  padInitializeDefault(&pad);
+}
+
 static Sint16 stick(int v) { return (Sint16)(v < -32767 ? -32767 : v > 32767 ? 32767 : v); }
 
 void *input_pad_thread(void *arg) {
   (void)arg;
-  padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-  PadState pad;
-  padInitializeDefault(&pad);
+  debugPrintf("[pad] thread started\n");
 
   SDL_VirtualJoystickDesc desc;
   SDL_INIT_INTERFACE(&desc);
@@ -34,7 +39,10 @@ void *input_pad_thread(void *arg) {
 
   /* wait until the game has brought SDL's video up, then make sure joystick+gamepad
    * are initialised too (SDL_AttachVirtualJoystick fails otherwise) */
-  while (!g_stop && !(SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO)) svcSleepThread(200000000ULL);
+  for (int n = 0; !g_stop && !(SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO); n++) {
+    if (n % 25 == 0) debugPrintf("[pad] waiting for SDL video (WasInit=%#x)\n", (unsigned)SDL_WasInit(0));
+    svcSleepThread(200000000ULL);
+  }
   SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
   if (!SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS))
     debugPrintf("[pad] SDL_InitSubSystem(joystick|gamepad) failed: %s\n", SDL_GetError());

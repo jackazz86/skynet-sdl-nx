@@ -17,6 +17,7 @@
 extern void shim_tls_install(void);
 extern void *input_pad_thread(void *);
 extern void input_pad_stop(void);
+extern void input_pad_init(void);
 
 /* SDL_main (the game's managed entry point) runs on its own thread, like the
  * SDLThread on Android, with a big stack. */
@@ -141,6 +142,10 @@ int main(int argc, char **argv) {
     pthread_t th;
     int prc = pthread_create(&th, &at, sdl_main_thread, NULL);
     debugPrintf("== SDL_main thread started rc=%d ==\n", prc);
+    input_pad_init();   /* hid on the main thread; the thread feeds SDL's virtual gamepad */
+    pthread_t ith;
+    int irc = pthread_create(&ith, NULL, input_pad_thread, NULL);
+    debugPrintf("== input thread rc=%d ==\n", irc);
     /* heartbeat every 10 s: tells "slow but alive" from "hung" when the log is read afterwards */
     for (unsigned tick = 0; appletMainLoop() && !g_sdl_done; tick++) {
       svcSleepThread(50000000ULL);
