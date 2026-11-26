@@ -137,15 +137,12 @@ int main(int argc, char **argv) {
     util_console_active(0);
     consoleExit(NULL);
     consoleDebugInit(debugDevice_NULL);
+    input_pad_init();   /* libnx pad, on the main thread, before the game can poll it */
     pthread_attr_t at; pthread_attr_init(&at);
     pthread_attr_setstacksize(&at, 16u << 20);
     pthread_t th;
     int prc = pthread_create(&th, &at, sdl_main_thread, NULL);
     debugPrintf("== SDL_main thread started rc=%d ==\n", prc);
-    input_pad_init();   /* hid on the main thread; the thread feeds SDL's virtual gamepad */
-    pthread_t ith;
-    int irc = pthread_create(&ith, NULL, input_pad_thread, NULL);
-    debugPrintf("== input thread rc=%d ==\n", irc);
     /* heartbeat every 10 s: tells "slow but alive" from "hung" when the log is read afterwards */
     for (unsigned tick = 0; appletMainLoop() && !g_sdl_done; tick++) {
       svcSleepThread(50000000ULL);
