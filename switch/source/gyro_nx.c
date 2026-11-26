@@ -20,7 +20,7 @@
 #define CFG_MARK "# gyro v2"
 
 gyro_cfg_t gyro_cfg = {
-  .enabled = 1, .debug = 0, .drift = 0,
+  .enabled = 1, .debug = 0, .drift = 0, .mode = 1, .mouse_deg_per_px = 0.176f,
   .yaw = 1.0f, .pitch = 1.0f, .roll = 1.0f,
   .yaw_full = 315.0f, .pitch_full = 180.0f,
   .deadzone = 0.0f, .smooth_ms = 10.0f, .stick_deadzone = 0.15f,
@@ -43,8 +43,8 @@ void gyro_nx_save_cfg(void) {
     "# yaw_full / pitch_full: the game's turn and look rates at a fully pushed right stick (deg/s).\n"
     "# deadzone: deg/s below which the sensor is ignored; smooth_ms: averaging time of the readings.\n"
     "# stick_deadzone: the right stick's dead zone, now applied by the port (the game's own is set to 0).\n"
-    "enabled %d\nyaw %.2f\npitch %.2f\nroll %.2f\nyaw_full %.0f\npitch_full %.0f\ndeadzone %.2f\nsmooth_ms %.0f\ndrift %d\ndebug %d\nstick_deadzone %.2f\n",
-    CFG_MARK, gyro_cfg.enabled, gyro_cfg.yaw, gyro_cfg.pitch, gyro_cfg.roll, gyro_cfg.yaw_full, gyro_cfg.pitch_full,
+    "enabled %d\nmode %d\nmouse_deg_per_px %.3f\nyaw %.2f\npitch %.2f\nroll %.2f\nyaw_full %.0f\npitch_full %.0f\ndeadzone %.2f\nsmooth_ms %.0f\ndrift %d\ndebug %d\nstick_deadzone %.2f\n",
+    CFG_MARK, gyro_cfg.enabled, gyro_cfg.mode, gyro_cfg.mouse_deg_per_px, gyro_cfg.yaw, gyro_cfg.pitch, gyro_cfg.roll, gyro_cfg.yaw_full, gyro_cfg.pitch_full,
     gyro_cfg.deadzone, gyro_cfg.smooth_ms, gyro_cfg.drift, gyro_cfg.debug, gyro_cfg.stick_deadzone);
   fclose(f);
 }
@@ -64,6 +64,8 @@ void gyro_nx_load_cfg(void) {
   while (fgets(line, sizeof line, f)) {
     if (line[0] == '#' || sscanf(line, "%39s %f", key, &v) != 2) continue;
     if (!strcmp(key, "enabled")) gyro_cfg.enabled = (int)v;
+    else if (!strcmp(key, "mode")) gyro_cfg.mode = (int)v;
+    else if (!strcmp(key, "mouse_deg_per_px")) gyro_cfg.mouse_deg_per_px = v;
     else if (!strcmp(key, "debug")) gyro_cfg.debug = (int)v;
     else if (!strcmp(key, "drift")) gyro_cfg.drift = (int)v;
     else if (!strcmp(key, "yaw")) gyro_cfg.yaw = v;
@@ -168,9 +170,13 @@ void gyro_nx_sample(u64 now, float *turn_dps, float *pitch_dps) {
 }
 
 void gyro_nx_toggle(void) {
-  gyro_cfg.enabled = !gyro_cfg.enabled;
+  /* stick -> mouse -> off -> stick */
+  if (!gyro_cfg.enabled) { gyro_cfg.enabled = 1; gyro_cfg.mode = 0; }
+  else if (gyro_cfg.mode == 0) gyro_cfg.mode = 1;
+  else gyro_cfg.enabled = 0;
   s_ema_turn = s_ema_pitch = 0.0f;
-  debugPrintf("[gyro] %s\n", gyro_cfg.enabled ? "on" : "off");
+  debugPrintf("[gyro] %s\n", !gyro_cfg.enabled ? "off" : gyro_cfg.mode == 0 ? "on, added to the right stick" : "on, as relative mouse motion");
+  gyro_nx_save_cfg();
 }
 
 void gyro_nx_stats(char *buf, size_t n) {

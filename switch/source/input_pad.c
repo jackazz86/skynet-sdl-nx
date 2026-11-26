@@ -134,15 +134,53 @@ static SDL_WindowID window_id(void) {
  * cursor on this build, so the signal is the game's own log: "[Session] enter MAP.nnn" =
  * play. L3+R3 together flips it by hand (g_force). */
 static volatile int g_gameplay;
+static volatile int g_menu_open;     /* the in-game (pause) menu is assumed open: Start toggles it,
+                                      * and the game's own "[Perf] ... N ticks a frame" corrects it */
 void input_pad_on_log(const char *msg) {
-  if (msg && !strncmp(msg, "[Session] enter", 15)) { g_gameplay = 1; g_force = 0; debugPrintf("[pad] session started -> gamepad mode\n"); }
+  if (!msg) return;
+  if (!strncmp(msg, "[Session] enter", 15)) { g_gameplay = 1; g_menu_open = 0; g_force = 0; debugPrintf("[pad] session started -> gamepad mode\n"); return; }
+  /* the simulation stops while the menu is open: ticks a frame ~ 0 */
+  const char *t = strstr(msg, "ticks a frame");
+  if (t && !strncmp(msg, "[Perf]", 6) && g_gameplay) {
+    const char *q = t - 1;
+    while (q > msg && *q == ' ') q--;
+    while (q > msg && ((*q >= '0' && *q <= '9') || *q == '.')) q--;
+    float ticks = (float)atof(q + 1);
+    int open = ticks < 0.3f;
+    if (open != g_menu_open) { g_menu_open = open; debugPrintf("[pad] game says %.1f ticks a frame -> menu %s\n", ticks, open ? "open" : "closed"); }
+  }
 }
 static int menu_mode(void) {
   if (g_force == 1) return 0;
   if (g_force == 2) return 1;
   if (g_relative || g_cursor_hidden) return 0;
-  return !g_gameplay;
+  return !g_gameplay || g_menu_open;
 }
+
+/* ---------------------------------------------------------- text input */
+/* The native SDL opens the Switch's system keyboard (swkbdInline) as soon as the game asks
+ * for text, which the NEW GAME name dialog does the moment it appears, and the keyboard's
+ * "+" (OK) leaked through as Start = Esc. So the game's request is only RECORDED here
+ * (SDL_TextInputActive answers true); Y opens the keyboard on demand, and while it is up
+ * (and briefly after) the pad does not reach the game. */
+static volatile int g_text_wanted;
+static SDL_Window *g_text_win;
+static int g_kb_shown, g_kb_open_request;
+static u64 g_kb_start, g_kb_end;
+static int kb_blocking(u64 now) {
+  return g_kb_shown || (g_kb_end && now - g_kb_end < armGetSystemTickFreq() * 6 / 10);
+}
+static void kb_closed(void) {
+  if (g_kb_shown) { g_kb_shown = 0; g_kb_end = armGetSystemTick(); debugPrintf("[pad] keyboard closed\n"); }
+}
+bool skynet_SDL_StartTextInput(SDL_Window *w) { g_text_win = w; g_text_wanted = 1; return true; }
+bool skynet_SDL_StartTextInputWithProperties(SDL_Window *w, SDL_PropertiesID p) { (void)p; g_text_win = w; g_text_wanted = 1; return true; }
+bool skynet_SDL_StopTextInput(SDL_Window *w) {
+  g_text_wanted = 0;
+  if (g_kb_shown) { SDL_StopTextInput(w ? w : g_text_win); kb_closed(); }
+  return true;
+}
+bool skynet_SDL_TextInputActive(SDL_Window *w) { (void)w; return g_text_wanted != 0; }
 static int pointer_active(void) {
   return menu_mode() && g_ptr_moved_once && armGetSystemTick() < g_active_until;
 }
@@ -165,6 +203,23 @@ static void refresh(void) {
   HidAnalogStickState l = padGetStickPos(&g_pad, 0), r = padGetStickPos(&g_pad, 1);
   Sint16 lx = clampv(l.x), ly = clampv(-l.y), rx = clampv(r.x), ry = clampv(-r.y);
   int menu = menu_mode();
+
+  /* Start in play opens/closes the in-game menu (the game's Menu action) */
+  if (g_gameplay && !g_force && (held & HidNpadButton_Plus) && !(g_prev_held & HidNpadButton_Plus) && !kb_blocking(now)) {
+    g_menu_open = !g_menu_open; menu = menu_mode();
+    debugPrintf("[pad] Start: in-game menu assumed %s\n", g_menu_open ? "open (pointer)" : "closed (gamepad)");
+  }
+  /* Y on a text screen opens the system keyboard on demand */
+  if (g_text_wanted && !g_kb_shown && menu && (held & HidNpadButton_Y) && !(g_prev_held & HidNpadButton_Y)) {
+    g_kb_shown = 1; g_kb_start = now; g_kb_open_request = 1;
+  }
+  if (g_kb_shown && now - g_kb_start > 60 * armGetSystemTickFreq()) kb_closed();   /* safety net */
+  if (kb_blocking(now)) {
+    /* the keyboard owns the input: nothing reaches the game (Start/+ is its "OK") */
+    g_prev_held = held;
+    g_ax[0] = g_ax[1] = g_ax[2] = g_ax[3] = g_ax[4] = g_ax[5] = 0;
+    return;
+  }
 
   if (menu != g_last_menu) {
     g_last_menu = menu;
@@ -241,7 +296,23 @@ static void refresh(void) {
   if (!menu && gyro_cfg.enabled) {
     float tdps, pdps;
     gyro_nx_sample(now, &tdps, &pdps);
-    gdx = tdps / gyro_cfg.yaw_full; gdy = pdps / gyro_cfg.pitch_full;
+    if (gyro_cfg.mode == 0) {
+      gdx = tdps / gyro_cfg.yaw_full; gdy = pdps / gyro_cfg.pitch_full;     /* added to the stick */
+    } else {
+      /* mouse mode: the rate becomes relative mouse motion at the engine's own mouse scale
+       * (0.176 deg per pixel), whole pixels per event, the remainder carried over */
+      static float ax_acc, ay_acc;
+      ax_acc += tdps * dt / gyro_cfg.mouse_deg_per_px;
+      ay_acc += pdps * dt / gyro_cfg.mouse_deg_per_px;
+      int ix = (int)ax_acc, iy = (int)ay_acc;
+      if (ix || iy) {
+        ax_acc -= (float)ix; ay_acc -= (float)iy;
+        if (!wid) wid = window_id();
+        SDL_zero(e); e.type = SDL_EVENT_MOUSE_MOTION; e.motion.timestamp = SDL_GetTicksNS(); e.motion.windowID = wid;
+        e.motion.which = 1; e.motion.x = g_px; e.motion.y = g_py; e.motion.xrel = (float)ix; e.motion.yrel = (float)iy;
+        push(&e);
+      }
+    }
   }
   float tx = rvx + gdx, ty = rvy + gdy, tm = sqrtf(tx * tx + ty * ty);
   if (tm > 1.0f) { tx /= tm; ty /= tm; }
@@ -342,9 +413,29 @@ bool skynet_SDL_PollEvent(SDL_Event *ev) {
     mutexUnlock(&g_mx);
     return true;
   }
+  int open_kb = g_kb_open_request; g_kb_open_request = 0;
   mutexUnlock(&g_mx);
+  if (open_kb) {
+    SDL_Window *w = g_text_win;
+    if (!w) { int n = 0; SDL_Window **ws = SDL_GetWindows(&n); if (ws && n > 0) w = ws[0]; SDL_free(ws); }
+    if (SDL_StartTextInput(w)) debugPrintf("[pad] system keyboard opened (Y)\n");
+    else { debugPrintf("[pad] system keyboard failed: %s\n", SDL_GetError()); kb_closed(); }
+  }
+  if (g_kb_shown) {
+    /* the keyboard ended by itself (OK or cancel): native text input no longer active */
+    static u64 last_check;
+    u64 now = armGetSystemTick();
+    if (now - last_check > armGetSystemTickFreq() / 10) {
+      last_check = now;
+      if (now - g_kb_start > armGetSystemTickFreq() / 2 && !SDL_TextInputActive(g_text_win)) kb_closed();
+    }
+  }
   while (SDL_PollEvent(ev)) {
-    if (!is_touch_event(ev)) return true;
+    if (is_touch_event(ev)) continue;
+    if (g_kb_shown && ev->type == SDL_EVENT_KEY_DOWN && (ev->key.key == SDLK_RETURN || ev->key.key == SDLK_KP_ENTER || ev->key.key == SDLK_ESCAPE)) {
+      SDL_StopTextInput(g_text_win); kb_closed();       /* Enter/Esc from the keyboard ends it */
+    }
+    return true;
   }
   /* nothing to report: when the game spins on this call (menus: ~180000/s measured, which
    * starved the render thread and made the pointer judder), yield a little */
