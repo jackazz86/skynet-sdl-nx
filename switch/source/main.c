@@ -94,6 +94,16 @@ int main(int argc, char **argv) {
     int ver = onload(jni_fake_vm(), NULL);
     debugPrintf("== JNI_OnLoad returned %#x ==\n", ver);
   }
+  if (e_init) {
+    /* Java_net_dot_jni_nativeaot_JavaInteropRuntime_init(env, cls, x2..x5): the
+     * extra args are unknown (loader/context-like); pass distinct fake handles. */
+    debugPrintf("== calling JavaInteropRuntime_init ==\n");
+    void (*init)(void *, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t) = (void *)e_init;
+    init(jni_fake_env(), jni_fake_handle("class", "net/dot/jni/nativeaot/JavaInteropRuntime"),
+         jni_fake_handle("obj", "ClassLoader"), jni_fake_handle("obj", "arg3"),
+         jni_fake_handle("obj", "arg4"), jni_fake_handle("obj", "arg5"));
+    debugPrintf("== JavaInteropRuntime_init returned ==\n");
+  }
 
 done:
   debugFlush();

@@ -163,3 +163,4 @@ void *jni_fake_vm(void) {
   return &g_vm_ptr;
 }
 void *jni_fake_env(void) { return &g_env_ptr; }
+intptr_t jni_fake_handle(const char *kind, const char *name) { return new_handle(kind, name); }
