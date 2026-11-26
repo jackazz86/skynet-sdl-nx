@@ -1,0 +1,7 @@
+*.so
+*.apk
+*.nro
+*.elf
+build/
+gamedata/
+apk_x/
