@@ -22,7 +22,6 @@ void *input_pad_thread(void *arg) {
   PadState pad;
   padInitializeDefault(&pad);
 
-  /* the game initialises SDL's joystick subsystem itself: wait for it */
   SDL_VirtualJoystickDesc desc;
   SDL_INIT_INTERFACE(&desc);
   desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
@@ -32,12 +31,29 @@ void *input_pad_thread(void *arg) {
   desc.vendor_id = 0x057E;   /* Nintendo */
   desc.product_id = 0x2009;  /* Switch Pro Controller */
   desc.name = "Nintendo Switch";
+
+  /* wait until the game has brought SDL's video up, then make sure joystick+gamepad
+   * are initialised too (SDL_AttachVirtualJoystick fails otherwise) */
+  while (!g_stop && !(SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO)) svcSleepThread(200000000ULL);
+  SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+  if (!SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS))
+    debugPrintf("[pad] SDL_InitSubSystem(joystick|gamepad) failed: %s\n", SDL_GetError());
+  debugPrintf("[pad] SDL_WasInit = %#x\n", (unsigned)SDL_WasInit(0));
+
   SDL_JoystickID id = 0;
-  while (!g_stop && !(id = SDL_AttachVirtualJoystick(&desc))) svcSleepThread(500000000ULL);
+  for (int tries = 0; !g_stop && !(id = SDL_AttachVirtualJoystick(&desc)); tries++) {
+    if (tries < 5 || tries % 20 == 0)
+      debugPrintf("[pad] SDL_AttachVirtualJoystick failed (try %d): %s\n", tries, SDL_GetError());
+    svcSleepThread(500000000ULL);
+  }
   if (!id) return NULL;
   SDL_Joystick *joy = NULL;
-  while (!g_stop && !(joy = SDL_OpenJoystick(id))) svcSleepThread(100000000ULL);
-  debugPrintf("[pad] virtual gamepad attached id=%u joy=%p\n", (unsigned)id, (void *)joy);
+  for (int tries = 0; !g_stop && !(joy = SDL_OpenJoystick(id)); tries++) {
+    if (tries < 5) debugPrintf("[pad] SDL_OpenJoystick failed: %s\n", SDL_GetError());
+    svcSleepThread(100000000ULL);
+  }
+  debugPrintf("[pad] virtual gamepad attached id=%u joy=%p gamepad=%d\n",
+              (unsigned)id, (void *)joy, (int)SDL_IsGamepad(id));
   if (!joy) return NULL;
 
   static const struct { u64 mask; int button; } MAP[] = {
