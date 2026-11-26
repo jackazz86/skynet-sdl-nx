@@ -268,6 +268,7 @@ extern void SDL_GetCurrentDisplayMode(void);
 extern void SDL_GetCurrentDisplayOrientation(void);
 extern void SDL_GetCurrentRenderOutputSize(void);
 extern void SDL_GetCurrentThreadID(void);
+extern void SDL_GetCurrentTime(void);
 extern void SDL_GetCurrentVideoDriver(void);
 extern void SDL_GetCursor(void);
 extern void SDL_GetDXGIOutputInfo(void);
@@ -298,6 +299,7 @@ extern void SDL_GetFullscreenDisplayModes(void);
 extern void SDL_GetGDKDefaultUser(void);
 extern void SDL_GetGDKTaskQueue(void);
 extern void SDL_GetGPUDeviceDriver(void);
+extern void SDL_GetGPUDeviceProperties(void);
 extern void SDL_GetGPUDriver(void);
 extern void SDL_GetGPUShaderFormats(void);
 extern void SDL_GetGPUSwapchainTextureFormat(void);
@@ -511,6 +513,7 @@ extern void SDL_GetSurfaceColorspace(void);
 extern void SDL_GetSurfaceImages(void);
 extern void SDL_GetSurfacePalette(void);
 extern void SDL_GetSurfaceProperties(void);
+extern void SDL_GetSystemPageSize(void);
 extern void SDL_GetSystemRAM(void);
 extern void SDL_GetSystemTheme(void);
 extern void SDL_GetTLS(void);
@@ -563,6 +566,8 @@ extern void SDL_GetWindowParent(void);
 extern void SDL_GetWindowPixelDensity(void);
 extern void SDL_GetWindowPixelFormat(void);
 extern void SDL_GetWindowPosition(void);
+extern void SDL_GetWindowProgressState(void);
+extern void SDL_GetWindowProgressValue(void);
 extern void SDL_GetWindowProperties(void);
 extern void SDL_GetWindowRelativeMouseMode(void);
 extern void SDL_GetWindowSafeArea(void);
@@ -602,6 +607,7 @@ extern void SDL_HasSSE2(void);
 extern void SDL_HasSSE3(void);
 extern void SDL_HasSSE41(void);
 extern void SDL_HasSSE42(void);
+extern void SDL_HasSVE2(void);
 extern void SDL_HasScreenKeyboardSupport(void);
 extern void SDL_HideCursor(void);
 extern void SDL_HideWindow(void);
@@ -863,6 +869,7 @@ extern void SDL_SetPaletteColors(void);
 extern void SDL_SetPointerProperty(void);
 extern void SDL_SetPointerPropertyWithCleanup(void);
 extern void SDL_SetPrimarySelectionText(void);
+extern void SDL_SetRelativeMouseTransform(void);
 extern void SDL_SetRenderClipRect(void);
 extern void SDL_SetRenderColorScale(void);
 extern void SDL_SetRenderDrawBlendMode(void);
@@ -900,6 +907,7 @@ extern void SDL_SetTrayTooltip(void);
 extern void SDL_SetWindowAlwaysOnTop(void);
 extern void SDL_SetWindowAspectRatio(void);
 extern void SDL_SetWindowBordered(void);
+extern void SDL_SetWindowFillDocument(void);
 extern void SDL_SetWindowFocusable(void);
 extern void SDL_SetWindowFullscreen(void);
 extern void SDL_SetWindowFullscreenMode(void);
@@ -914,6 +922,8 @@ extern void SDL_SetWindowMouseRect(void);
 extern void SDL_SetWindowOpacity(void);
 extern void SDL_SetWindowParent(void);
 extern void SDL_SetWindowPosition(void);
+extern void SDL_SetWindowProgressState(void);
+extern void SDL_SetWindowProgressValue(void);
 extern void SDL_SetWindowRelativeMouseMode(void);
 extern void SDL_SetWindowResizable(void);
 extern void SDL_SetWindowShape(void);
@@ -960,6 +970,7 @@ extern void SDL_TellIO(void);
 extern void SDL_TextInputActive(void);
 extern void SDL_TimeFromWindows(void);
 extern void SDL_TimeToWindows(void);
+extern void SDL_TryLockJoysticks(void);
 extern void SDL_TryLockMutex(void);
 extern void SDL_TryLockRWLockForReading(void);
 extern void SDL_TryLockRWLockForWriting(void);
@@ -1475,6 +1486,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_GetCurrentDisplayOrientation", (uintptr_t)&SDL_GetCurrentDisplayOrientation },
   { "SDL_GetCurrentRenderOutputSize", (uintptr_t)&SDL_GetCurrentRenderOutputSize },
   { "SDL_GetCurrentThreadID", (uintptr_t)&SDL_GetCurrentThreadID },
+  { "SDL_GetCurrentTime", (uintptr_t)&SDL_GetCurrentTime },
   { "SDL_GetCurrentVideoDriver", (uintptr_t)&SDL_GetCurrentVideoDriver },
   { "SDL_GetCursor", (uintptr_t)&SDL_GetCursor },
   { "SDL_GetDXGIOutputInfo", (uintptr_t)&SDL_GetDXGIOutputInfo },
@@ -1505,6 +1517,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_GetGDKDefaultUser", (uintptr_t)&SDL_GetGDKDefaultUser },
   { "SDL_GetGDKTaskQueue", (uintptr_t)&SDL_GetGDKTaskQueue },
   { "SDL_GetGPUDeviceDriver", (uintptr_t)&SDL_GetGPUDeviceDriver },
+  { "SDL_GetGPUDeviceProperties", (uintptr_t)&SDL_GetGPUDeviceProperties },
   { "SDL_GetGPUDriver", (uintptr_t)&SDL_GetGPUDriver },
   { "SDL_GetGPUShaderFormats", (uintptr_t)&SDL_GetGPUShaderFormats },
   { "SDL_GetGPUSwapchainTextureFormat", (uintptr_t)&SDL_GetGPUSwapchainTextureFormat },
@@ -1718,6 +1731,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_GetSurfaceImages", (uintptr_t)&SDL_GetSurfaceImages },
   { "SDL_GetSurfacePalette", (uintptr_t)&SDL_GetSurfacePalette },
   { "SDL_GetSurfaceProperties", (uintptr_t)&SDL_GetSurfaceProperties },
+  { "SDL_GetSystemPageSize", (uintptr_t)&SDL_GetSystemPageSize },
   { "SDL_GetSystemRAM", (uintptr_t)&SDL_GetSystemRAM },
   { "SDL_GetSystemTheme", (uintptr_t)&SDL_GetSystemTheme },
   { "SDL_GetTLS", (uintptr_t)&SDL_GetTLS },
@@ -1770,6 +1784,8 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_GetWindowPixelDensity", (uintptr_t)&SDL_GetWindowPixelDensity },
   { "SDL_GetWindowPixelFormat", (uintptr_t)&SDL_GetWindowPixelFormat },
   { "SDL_GetWindowPosition", (uintptr_t)&SDL_GetWindowPosition },
+  { "SDL_GetWindowProgressState", (uintptr_t)&SDL_GetWindowProgressState },
+  { "SDL_GetWindowProgressValue", (uintptr_t)&SDL_GetWindowProgressValue },
   { "SDL_GetWindowProperties", (uintptr_t)&SDL_GetWindowProperties },
   { "SDL_GetWindowRelativeMouseMode", (uintptr_t)&SDL_GetWindowRelativeMouseMode },
   { "SDL_GetWindowSafeArea", (uintptr_t)&SDL_GetWindowSafeArea },
@@ -1809,6 +1825,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_HasSSE3", (uintptr_t)&SDL_HasSSE3 },
   { "SDL_HasSSE41", (uintptr_t)&SDL_HasSSE41 },
   { "SDL_HasSSE42", (uintptr_t)&SDL_HasSSE42 },
+  { "SDL_HasSVE2", (uintptr_t)&SDL_HasSVE2 },
   { "SDL_HasScreenKeyboardSupport", (uintptr_t)&SDL_HasScreenKeyboardSupport },
   { "SDL_HideCursor", (uintptr_t)&SDL_HideCursor },
   { "SDL_HideWindow", (uintptr_t)&SDL_HideWindow },
@@ -2070,6 +2087,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_SetPointerProperty", (uintptr_t)&SDL_SetPointerProperty },
   { "SDL_SetPointerPropertyWithCleanup", (uintptr_t)&SDL_SetPointerPropertyWithCleanup },
   { "SDL_SetPrimarySelectionText", (uintptr_t)&SDL_SetPrimarySelectionText },
+  { "SDL_SetRelativeMouseTransform", (uintptr_t)&SDL_SetRelativeMouseTransform },
   { "SDL_SetRenderClipRect", (uintptr_t)&SDL_SetRenderClipRect },
   { "SDL_SetRenderColorScale", (uintptr_t)&SDL_SetRenderColorScale },
   { "SDL_SetRenderDrawBlendMode", (uintptr_t)&SDL_SetRenderDrawBlendMode },
@@ -2107,6 +2125,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_SetWindowAlwaysOnTop", (uintptr_t)&SDL_SetWindowAlwaysOnTop },
   { "SDL_SetWindowAspectRatio", (uintptr_t)&SDL_SetWindowAspectRatio },
   { "SDL_SetWindowBordered", (uintptr_t)&SDL_SetWindowBordered },
+  { "SDL_SetWindowFillDocument", (uintptr_t)&SDL_SetWindowFillDocument },
   { "SDL_SetWindowFocusable", (uintptr_t)&SDL_SetWindowFocusable },
   { "SDL_SetWindowFullscreen", (uintptr_t)&SDL_SetWindowFullscreen },
   { "SDL_SetWindowFullscreenMode", (uintptr_t)&SDL_SetWindowFullscreenMode },
@@ -2121,6 +2140,8 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_SetWindowOpacity", (uintptr_t)&SDL_SetWindowOpacity },
   { "SDL_SetWindowParent", (uintptr_t)&SDL_SetWindowParent },
   { "SDL_SetWindowPosition", (uintptr_t)&SDL_SetWindowPosition },
+  { "SDL_SetWindowProgressState", (uintptr_t)&SDL_SetWindowProgressState },
+  { "SDL_SetWindowProgressValue", (uintptr_t)&SDL_SetWindowProgressValue },
   { "SDL_SetWindowRelativeMouseMode", (uintptr_t)&SDL_SetWindowRelativeMouseMode },
   { "SDL_SetWindowResizable", (uintptr_t)&SDL_SetWindowResizable },
   { "SDL_SetWindowShape", (uintptr_t)&SDL_SetWindowShape },
@@ -2167,6 +2188,7 @@ DynLibFunction skynet_sdl_imports[] = {
   { "SDL_TextInputActive", (uintptr_t)&SDL_TextInputActive },
   { "SDL_TimeFromWindows", (uintptr_t)&SDL_TimeFromWindows },
   { "SDL_TimeToWindows", (uintptr_t)&SDL_TimeToWindows },
+  { "SDL_TryLockJoysticks", (uintptr_t)&SDL_TryLockJoysticks },
   { "SDL_TryLockMutex", (uintptr_t)&SDL_TryLockMutex },
   { "SDL_TryLockRWLockForReading", (uintptr_t)&SDL_TryLockRWLockForReading },
   { "SDL_TryLockRWLockForWriting", (uintptr_t)&SDL_TryLockRWLockForWriting },

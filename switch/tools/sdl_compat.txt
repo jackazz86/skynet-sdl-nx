@@ -1,0 +1,11 @@
+SDL_GetGPUDeviceProperties
+SDL_SetWindowProgressState
+SDL_SetWindowProgressValue
+SDL_GetWindowProgressState
+SDL_GetWindowProgressValue
+SDL_SetWindowFillDocument
+SDL_HasSVE2
+SDL_GetSystemPageSize
+SDL_TryLockJoysticks
+SDL_SetRelativeMouseTransform
+SDL_GetCurrentTime
