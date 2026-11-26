@@ -399,6 +399,8 @@ SH(int, dl_iterate_phdr, (int (*cb)(void *, size_t, void *), void *d)) { return 
 extern so_module *g_skynet_mod;
 extern DynLibFunction skynet_libc_imports[];
 extern const int skynet_libc_imports_count;
+extern DynLibFunction skynet_sdl_imports[];
+extern const int skynet_sdl_imports_count;
 SH(void *, dlopen, (const char *n, int f)) {
   (void)f;
   void *h = NULL;
@@ -411,8 +413,10 @@ SH(void *, dlopen, (const char *n, int f)) {
 }
 SH(void *, dlsym, (void *h, const char *n)) {
   void *r = NULL;
-  if (h == (void *)0x5D1) { /* SDL: not mapped yet */ }
-  else {
+  if (h == (void *)0x5D1) {
+    for (int i = 0; i < skynet_sdl_imports_count && !r; i++)
+      if (!strcmp(skynet_sdl_imports[i].symbol, n)) r = (void *)skynet_sdl_imports[i].func;
+  } else {
     if (h == (void *)0x5E1 || h == NULL || h == (void *)-1 || h == (void *)0x5A1) {
       for (int i = 0; i < skynet_libc_imports_count && !r; i++)
         if (!strcmp(skynet_libc_imports[i].symbol, n)) r = (void *)skynet_libc_imports[i].func;

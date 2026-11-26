@@ -12,7 +12,24 @@
 #include "imports.h"
 #include "jni_fake.h"
 
+#include <pthread.h>
+
 extern void shim_tls_install(void);
+
+/* SDL_main (the game's managed entry point) runs on its own thread, like the
+ * SDLThread on Android, with a big stack. */
+static uintptr_t g_sdl_main;
+static volatile int g_sdl_done;
+static void *sdl_main_thread(void *arg) {
+  (void)arg;
+  shim_tls_install();
+  char *argv[] = { "skynet", "--data", "/switch/skynet_sdl_nx/GAMEDATA", NULL };
+  debugPrintf("== SDL_main thread: calling SDL_main ==\n");
+  int rc = ((int (*)(int, char **))g_sdl_main)(3, argv);
+  debugPrintf("== SDL_main returned %d ==\n", rc);
+  g_sdl_done = 1;
+  return NULL;
+}
 static so_module skynet_mod;
 so_module *g_skynet_mod = &skynet_mod;
 
@@ -106,6 +123,16 @@ int main(int argc, char **argv) {
          jni_fake_handle("obj", "ClassLoader"), (intptr_t)"/switch/skynet_sdl_nx/tmp",
          (intptr_t)"/switch/skynet_sdl_nx/home", (intptr_t)"/switch/skynet_sdl_nx");
     debugPrintf("== JavaInteropRuntime_init returned ==\n");
+  }
+  if (e_main) {
+    g_sdl_main = e_main;
+    setenv("SKYNET_DATA", "/switch/skynet_sdl_nx/GAMEDATA", 1);
+    pthread_attr_t at; pthread_attr_init(&at);
+    pthread_attr_setstacksize(&at, 16u << 20);
+    pthread_t th;
+    int prc = pthread_create(&th, &at, sdl_main_thread, NULL);
+    debugPrintf("== SDL_main thread started rc=%d ==\n", prc);
+    while (appletMainLoop() && !g_sdl_done) svcSleepThread(50000000ULL);
   }
 
 done:
