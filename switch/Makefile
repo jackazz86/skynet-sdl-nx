@@ -16,7 +16,7 @@ CFLAGS   := -g -Wall -O2 -ffunction-sections -fdata-sections $(ARCH) -D__SWITCH_
 CXXFLAGS := $(CFLAGS)
 ASFLAGS  := -g $(ARCH)
 LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections
-LIBS     := -lnx -lm
+LIBS     := -lz -lnx -lm
 LIBDIRS  := $(PORTLIBS) $(LIBNX)
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT := $(CURDIR)/$(TARGET)
