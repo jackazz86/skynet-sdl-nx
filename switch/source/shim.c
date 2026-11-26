@@ -405,7 +405,7 @@ SH(void *, dlopen, (const char *n, int f)) {
   if (!n) h = (void *)0x5E1;
   else if (strstr(n, "SDL3")) h = (void *)0x5D1;
   else if (strstr(n, "SkyNet")) h = (void *)0x5E1;
-  else if (strstr(n, "log") || strstr(n, "libc") || strstr(n, "libm") || strstr(n, "libdl") || strstr(n, "libz")) h = (void *)0x5A1;
+  else h = (void *)0x5A1;   /* c, m, dl, log, z, android, ... and anything else: resolve from our table */
   debugPrintf("[dlopen] %s -> %p\n", n ? n : "(null)", h);
   return h;
 }

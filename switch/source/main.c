@@ -34,6 +34,9 @@ void __libnx_initheap(void) {
 }
 
 static void set_runtime_env(void) {
+  mkdir(APP_DIR "/tmp", 0777); mkdir(APP_DIR "/home", 0777);
+  setenv("TMPDIR", "/switch/skynet_sdl_nx/tmp", 1);
+  setenv("HOME", "/switch/skynet_sdl_nx/home", 1);
   setenv("DOTNET_GCHeapHardLimit", "10000000", 1);   /* hex: 256 MB */
   setenv("DOTNET_GCRegionRange", "14000000", 1);     /* hex: 320 MB, bounds the upfront reserve */
   setenv("DOTNET_GCgen0size", "400000", 1);

@@ -91,6 +91,7 @@ static intptr_t f_GetObjectField(void *env, intptr_t o, intptr_t fid) {
 static intptr_t f_GetPrimField(void *env, intptr_t o, intptr_t fid) {
   (void)env; debugPrintf("[jni] Get<prim>Field(%s, %s) -> 0\n", hn(o), hn(fid)); return 0;
 }
+static intptr_t f_GetObjectRefType(void *env, intptr_t o) { (void)env; (void)o; return 1; /* JNILocalRefType */ }
 static intptr_t f_IsSameObject(void *env, intptr_t a, intptr_t b) { (void)env; return a == b; }
 static intptr_t f_NewObjectArray(void *env, int n, intptr_t cls, intptr_t init) {
   (void)env; (void)init; intptr_t h = new_handle("array", hn(cls));
@@ -155,6 +156,7 @@ void *jni_fake_vm(void) {
     }
     set("GetObjectField", f_GetObjectField); set("GetStaticObjectField", f_GetObjectField);
     set("NewObject", f_NewObject); set("NewObjectV", f_NewObject); set("NewObjectA", f_NewObject);
+    set("GetObjectRefType", f_GetObjectRefType);
     set("IsSameObject", f_IsSameObject); set("NewObjectArray", f_NewObjectArray);
   }
   set("ThrowNew", f_ThrowNew); set("FatalError", f_FatalError); set("GetJavaVM", f_GetJavaVM);
