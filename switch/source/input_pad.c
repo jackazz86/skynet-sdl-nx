@@ -137,6 +137,7 @@ static volatile int g_gameplay;
 static volatile int g_paused_confirmed;   /* the game's [Perf] line said the simulation is stopped */
 static volatile int g_start_toggled;      /* the menu was opened by Start (pause menu: the 3D scene stays behind it) */
 static u64 g_last_click_tick;             /* last A / ZR press while the pointer was up */
+static u64 g_open_tick;                   /* when the pointer menu was last opened */
 static volatile unsigned g_idx_draws, g_last_frame_idx;   /* indexed draw calls = the 3D world, per frame */
 static volatile int g_menu_open;     /* the in-game (pause) menu is assumed open: Start toggles it,
                                       * and the game's own "[Perf] ... N ticks a frame" corrects it */
@@ -145,7 +146,7 @@ void input_pad_on_log(const char *msg) {
   if (!strncmp(msg, "[Session] enter", 15)) {
     /* a mission was entered: the mission screen (BEGIN / BRIEFING / TACTICAL / STATISTICS) comes
      * up over it, so the pointer is on until BEGIN: the first 3D frames after a click close it */
-    g_gameplay = 1; g_menu_open = 1; g_start_toggled = 0; g_paused_confirmed = 0; g_force = 0;
+    g_gameplay = 1; g_menu_open = 1; g_start_toggled = 0; g_paused_confirmed = 0; g_force = 0; g_open_tick = armGetSystemTick();
     debugPrintf("[pad] session started -> pointer up for the mission screen until BEGIN\n");
     return;
   }
@@ -214,11 +215,28 @@ static void refresh(void) {
   HidAnalogStickState l = padGetStickPos(&g_pad, 0), r = padGetStickPos(&g_pad, 1);
   Sint16 lx = clampv(l.x), ly = clampv(-l.y), rx = clampv(r.x), ry = clampv(-r.y);
   int menu = menu_mode();
+  float tdps = 0.0f, pdps = 0.0f;              /* gyro rates (deg/s), also used as "the game is running" evidence */
+  if (gyro_cfg.enabled) gyro_nx_sample(now, &tdps, &pdps);
 
   /* Start in play opens/closes the in-game menu (the game's Menu action) */
   if (g_gameplay && !g_force && (held & HidNpadButton_Plus) && !(g_prev_held & HidNpadButton_Plus) && !kb_blocking(now)) {
     g_menu_open = !g_menu_open; g_start_toggled = g_menu_open; menu = menu_mode();
+    g_open_tick = now;
     debugPrintf("[pad] Start: in-game menu assumed %s\n", g_menu_open ? "open (pointer)" : "closed (gamepad)");
+  }
+  /* Back in the game by another way (RESUME clicked, B, ...) nothing tells us: so gestures that
+   * only mean "playing" close the pointer: right stick pushed, L / R / ZL / X pressed, or a
+   * brisk gyro movement (not while the game itself said it is paused). Measured on hardware:
+   * after "+" and back, the pointer stayed up and the right stick scrolled = changed weapons. */
+  if (g_gameplay && g_menu_open && !g_force && now - g_open_tick > armGetSystemTickFreq() * 3 / 2) {
+    u64 pr = held & ~g_prev_held;
+    int ev = fabsf(rx / 32767.0f) > 0.45f || fabsf(ry / 32767.0f) > 0.45f ||
+             (pr & (HidNpadButton_L | HidNpadButton_R | HidNpadButton_ZL | HidNpadButton_X)) ||
+             (!g_paused_confirmed && (fabsf(tdps) > 120.0f || fabsf(pdps) > 120.0f));
+    if (ev) {
+      g_menu_open = 0; g_start_toggled = 0; g_paused_confirmed = 0; menu = menu_mode();
+      debugPrintf("[pad] play gesture -> game running again, pointer off\n");
+    }
   }
   /* BEGIN: the mission screen draws no 3D world; the first 3D frames after a click mean the
    * game started, so the pointer goes away at once instead of waiting for the next [Perf] line.
@@ -291,8 +309,9 @@ static void refresh(void) {
     }
     /* right stick Y: wheel */
     float wy = ry / 32767.0f;
-    /* in a mission the wheel changes weapons: only when the game confirmed it is paused */
-    if (fabsf(wy) > 0.5f && now - g_last_wheel > armGetSystemTickFreq() / 8 && (!g_gameplay || g_paused_confirmed)) {
+    /* in a mission the wheel changes weapons (and a stale pointer state made it do so after
+     * "+" and back): the right stick scrolls only in the title menus, before any mission */
+    if (fabsf(wy) > 0.5f && now - g_last_wheel > armGetSystemTickFreq() / 8 && !g_gameplay) {
       g_last_wheel = now;
       if (!wid) wid = window_id();
       SDL_zero(e); e.type = SDL_EVENT_MOUSE_WHEEL; e.wheel.timestamp = SDL_GetTicksNS(); e.wheel.windowID = wid;
@@ -313,9 +332,7 @@ static void refresh(void) {
     else if (m > 0.0f) { float k = (m - dz) / (1.0f - dz) / m; rvx *= k; rvy *= k; }
   }
   float gdx = 0.0f, gdy = 0.0f;
-  if (!menu && gyro_cfg.enabled) {
-    float tdps, pdps;
-    gyro_nx_sample(now, &tdps, &pdps);
+  if (!menu && gyro_cfg.enabled) {                   /* tdps / pdps were sampled at the top of this refresh */
     if (gyro_cfg.mode != 2) {
       gdx = tdps / gyro_cfg.yaw_full; gdy = pdps / gyro_cfg.pitch_full;     /* the rate as a share of a full stick */
       if (gyro_cfg.mode == 1) {
