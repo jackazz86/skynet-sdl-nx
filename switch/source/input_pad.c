@@ -157,9 +157,14 @@ void input_pad_on_log(const char *msg) {
     while (q > msg && *q == ' ') q--;
     while (q > msg && ((*q >= '0' && *q <= '9') || *q == '.')) q--;
     float ticks = (float)atof(q + 1);
-    int open = ticks < 0.3f;
+    /* "ticks a frame" alone lies when the frame rate is not 60: at 538 fps (vsync switched off in
+     * the options) a RUNNING game shows 0.1 ticks a frame. The simulation is stopped only when
+     * ticks PER SECOND (ticks a frame x fps) are about zero. */
+    float fps = (float)atof(msg + 6);
+    float tps = ticks * fps;
+    int open = tps < 8.0f;
     g_paused_confirmed = open;          /* only the game's own word counts as "really paused" */
-    if (open != g_menu_open) { g_menu_open = open; debugPrintf("[pad] game says %.1f ticks a frame -> menu %s\n", ticks, open ? "open" : "closed"); }
+    if (open != g_menu_open) { g_menu_open = open; debugPrintf("[pad] game says %.1f ticks a frame at %.0f fps = %.0f ticks/s -> menu %s\n", ticks, fps, tps, open ? "open" : "closed"); }
   }
 }
 static int menu_mode(void) {
